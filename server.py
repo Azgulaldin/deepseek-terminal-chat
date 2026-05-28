@@ -134,7 +134,6 @@ async def chat(ws: WebSocket):
     global ai_awake
 
     await ws.accept()
-await ws.send_text(json.dumps({"type": "system", "message": "connected"}))
 
     username = await ws.receive_text()
 

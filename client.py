@@ -189,10 +189,8 @@ async def main():
     ).strip()
 
     async with websockets.connect(
-    SERVER_URL,
-    ping_interval=20,
-    ping_timeout=20
-) as websocket:
+        SERVER_URL
+    ) as websocket:
 
         # send username first
         await websocket.send(username)
