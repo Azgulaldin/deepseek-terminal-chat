@@ -2,7 +2,7 @@ import asyncio
 import json
 import websockets
 
-SERVER_URL = "ws://127.0.0.1:8000/chat"
+SERVER_URL = "wss://deepseek-terminal-chat-production.up.railway.app/chat"
 
 WIDTH = 90
 
@@ -47,7 +47,9 @@ async def receive_messages(websocket, username):
                 # Your own message → right side
                 if sender == username:
 
-                    print(f"You: {message}".rjust(WIDTH))
+                    print(
+                        f"You: {message}".rjust(WIDTH)
+                    )
 
                 # AI
                 elif sender.upper() == sender:
@@ -71,9 +73,15 @@ async def receive_messages(websocket, username):
                 message = data["message"]
 
                 line()
-                print(f"[{sender} REASONING]")
+
+                print(
+                    f"[{sender} REASONING]"
+                )
+
                 print()
+
                 print(message)
+
                 line()
 
             # ==========================================
@@ -83,17 +91,29 @@ async def receive_messages(websocket, username):
             elif msg_type == "setup_required":
 
                 line()
-                print("You are the first user.")
-                print("Configure the AI.")
+
+                print(
+                    "You are the first user."
+                )
+
+                print(
+                    "Configure the AI."
+                )
+
                 line()
 
-                ai_name = input("AI Name: ").strip()
+                ai_name = input(
+                    "AI Name: "
+                ).strip()
 
                 behavior = input(
                     "AI Behavior: "
                 ).strip()
 
-                print("\nReasoning Intensity:")
+                print(
+                    "\nReasoning Intensity:"
+                )
+
                 print("1. easy")
                 print("2. medium")
                 print("3. high")
@@ -125,8 +145,10 @@ async def receive_messages(websocket, username):
                 setup_data = {
                     "ai_name": ai_name,
                     "behavior": behavior,
-                    "reasoning_level": reasoning_level,
-                    "show_reasoning": show_reasoning
+                    "reasoning_level":
+                        reasoning_level,
+                    "show_reasoning":
+                        show_reasoning
                 }
 
                 await websocket.send(
@@ -134,12 +156,17 @@ async def receive_messages(websocket, username):
                 )
 
                 line()
+
                 print("AI configured.")
+
                 line()
 
         except Exception as e:
 
-            print(f"\nDisconnected: {e}")
+            print(
+                f"\nDisconnected: {e}"
+            )
+
             break
 
 
@@ -169,7 +196,11 @@ async def main():
         await websocket.send(username)
 
         line()
-        print(f"Connected as {username}")
+
+        print(
+            f"Connected as {username}"
+        )
+
         line()
 
         await asyncio.gather(
