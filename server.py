@@ -3,6 +3,7 @@ from openai import OpenAI
 import json
 import os
 from datetime import datetime
+from starlette.websockets import WebSocketDisconnect  # FIX ADDED
 
 app = FastAPI()
 
@@ -179,7 +180,13 @@ async def chat(ws: WebSocket):
 
         while True:
 
-            msg = await ws.receive_text()
+            try:  # FIX ADDED
+
+                msg = await ws.receive_text()
+
+            except WebSocketDisconnect:
+                print(f"{username} disconnected normally.")
+                break
 
             print(f"{username}: {msg}")
 
