@@ -13,6 +13,10 @@ history = []
 ai_awake = True
 setup_owner = None
 
+current_session_id = None
+session_archive = {}
+session_counters = {}
+
 ai_config = {
     "name": "DEEPSEEK",
     "behavior": "Helpful and intelligent.",
@@ -49,7 +53,7 @@ async def broadcast(data):
 
     dead = []
 
-    for ws in clients:
+    for ws in list(clients.keys()):
 
         try:
             await ws.send_text(json.dumps(data))
@@ -64,8 +68,94 @@ async def broadcast(data):
 
 
 # =====================================================
-# HISTORY REPLAY
+# SESSION HELPERS
 # =====================================================
+
+def today_key():
+
+    now = datetime.now()
+    return f"{now.year}/{now.month}/{now.day}"
+
+
+def session_day_key(session_id):
+
+    parts = session_id.split("/")
+    if len(parts) < 3:
+        return ""
+    return "/".join(parts[:3])
+
+
+def next_session_id():
+
+    day = today_key()
+
+    if day not in session_counters:
+
+        existing_numbers = []
+
+        for key in session_archive.keys():
+
+            if session_day_key(key) == day:
+
+                try:
+                    existing_numbers.append(int(key.split("/")[-1]))
+                except:
+                    pass
+
+        session_counters[day] = max(existing_numbers, default=0)
+
+    session_counters[day] += 1
+
+    return f"{day}/{session_counters[day]}"
+
+
+def ensure_active_session():
+
+    global current_session_id
+
+    if current_session_id is None:
+        current_session_id = next_session_id()
+        return
+
+    if session_day_key(current_session_id) != today_key():
+
+        archive_current_session()
+        current_session_id = next_session_id()
+
+
+def archive_current_session():
+
+    if not current_session_id:
+        return
+
+    session_archive[current_session_id] = {
+        "history": [
+            dict(item) for item in history
+        ],
+        "ai_config": dict(ai_config)
+    }
+
+
+def restore_session(session_id):
+
+    global history
+    global ai_config
+    global current_session_id
+
+    loaded = session_archive.get(session_id)
+
+    if not loaded:
+        raise ValueError(f"Session not found: {session_id}")
+
+    history = [
+        dict(item) for item in loaded.get("history", [])
+    ]
+
+    loaded_config = loaded.get("ai_config", {})
+    ai_config.update(loaded_config)
+
+    current_session_id = session_id
+
 
 def normalize_history_entry(entry):
 
@@ -102,11 +192,26 @@ async def replay_history(ws):
             await ws.send_text(json.dumps({
                 "type": "chat",
                 "sender": entry.get("sender", "UNKNOWN"),
-                "message": entry.get("content", "")
+                "message": entry.get("content", ""),
+                "replay": True
             }))
 
         except:
             break
+
+
+async def replay_history_to_all():
+
+    for entry in history:
+
+        entry = normalize_history_entry(entry)
+
+        await broadcast({
+            "type": "chat",
+            "sender": entry.get("sender", "UNKNOWN"),
+            "message": entry.get("content", ""),
+            "replay": True
+        })
 
 
 # =====================================================
@@ -214,12 +319,15 @@ async def chat(ws: WebSocket):
 
     global ai_awake
     global setup_owner
+    global current_session_id
 
     await ws.accept()
 
     username = await ws.receive_text()
 
     clients[ws] = username
+
+    ensure_active_session()
 
     print(f"{username} connected.")
 
@@ -267,7 +375,8 @@ async def chat(ws: WebSocket):
                 await broadcast({
                     "type": "chat",
                     "sender": ai_config["name"],
-                    "message": first_message
+                    "message": first_message,
+                    "replay": False
                 })
 
         except Exception as e:
@@ -316,6 +425,13 @@ async def chat(ws: WebSocket):
             # =========================================
 
             if not ai_config["configured"]:
+
+                if setup_owner is None:
+                    setup_owner = ws
+                    await ws.send_text(json.dumps({
+                        "type": "setup_required"
+                    }))
+                    continue
 
                 if ws != setup_owner:
 
@@ -366,7 +482,8 @@ async def chat(ws: WebSocket):
                         await broadcast({
                             "type": "chat",
                             "sender": ai_config["name"],
-                            "message": first_message
+                            "message": first_message,
+                            "replay": False
                         })
 
                 except Exception as e:
@@ -463,13 +580,73 @@ async def chat(ws: WebSocket):
 
                 elif command == "/new":
 
+                    archive_current_session()
+
                     history.clear()
+
+                    current_session_id = next_session_id()
 
                     await broadcast({
                         "type": "new_session",
                         "message":
                             "New session started."
                     })
+
+                    continue
+
+                # -------------------------------------
+                # /load
+                # -------------------------------------
+
+                elif command.startswith("/load"):
+
+                    try:
+
+                        parts = msg.split(maxsplit=1)
+
+                        if len(parts) < 2:
+
+                            await ws.send_text(json.dumps({
+                                "type": "system",
+                                "message":
+                                    "Usage: /load yyyy/m/d/n"
+                            }))
+
+                            continue
+
+                        session_id = parts[1].strip()
+
+                        if session_id.endswith(".txt"):
+                            session_id = session_id[:-4]
+
+                        if session_id not in session_archive:
+
+                            await ws.send_text(json.dumps({
+                                "type": "system",
+                                "message":
+                                    f"Session not found: {session_id}"
+                            }))
+
+                            continue
+
+                        archive_current_session()
+                        restore_session(session_id)
+
+                        await broadcast({
+                            "type": "system",
+                            "message":
+                                f"Loaded session {session_id}."
+                        })
+
+                        await replay_history_to_all()
+
+                    except Exception as e:
+
+                        await ws.send_text(json.dumps({
+                            "type": "system",
+                            "message":
+                                f"Load failed: {e}"
+                        }))
 
                     continue
 
@@ -536,7 +713,8 @@ async def chat(ws: WebSocket):
             await broadcast({
                 "type": "chat",
                 "sender": username,
-                "message": msg
+                "message": msg,
+                "replay": False
             })
 
             append_user_message(username, msg)
@@ -621,7 +799,8 @@ async def chat(ws: WebSocket):
             await broadcast({
                 "type": "chat",
                 "sender": ai_config["name"],
-                "message": reply
+                "message": reply,
+                "replay": False
             })
 
     except Exception as e:

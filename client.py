@@ -33,9 +33,9 @@ def create_session_file():
     today = datetime.now()
     session_dir = (
         SESSION_ROOT
-        / f"{today:%Y}"
-        / f"{today:%m}"
-        / f"{today:%d}"
+        / f"{today.year}"
+        / f"{today.month}"
+        / f"{today.day}"
     )
 
     session_dir.mkdir(parents=True, exist_ok=True)
@@ -82,6 +82,13 @@ def log_session(message):
     ) as f:
 
         f.write(f"[{stamp}] {message}\n")
+
+
+def display_own_message(message):
+    line()
+    print(f"You: {message}".rjust(WIDTH))
+    line()
+    log_session(f"You: {message}")
 
 
 # =====================================================
@@ -227,6 +234,10 @@ async def receive_messages(websocket, username, setup_done):
                 sender = data["sender"]
                 message = data["message"]
 
+                # Skip our own server echo, since we print it locally once
+                if sender == username:
+                    continue
+
                 # Skip the one first-message copy we already printed locally
                 if (
                     PENDING_FIRST_MESSAGE
@@ -238,19 +249,10 @@ async def receive_messages(websocket, username, setup_done):
 
                 line()
 
-                # Your own message → right side
-                if sender == username:
-
-                    print(
-                        f"You: {message}".rjust(WIDTH)
-                    )
-
-                # AI
-                elif sender.upper() == sender:
+                if sender.upper() == sender:
 
                     print(f"[{sender}]: {message}")
 
-                # Other users
                 else:
 
                     print(f"[{sender}]: {message}")
@@ -296,6 +298,8 @@ async def receive_messages(websocket, username, setup_done):
 
                 log_session(f"SYSTEM: {data['message']}")
 
+                PENDING_FIRST_MESSAGE = None
+
             # ==========================================
             # NEW SESSION
             # ==========================================
@@ -309,6 +313,8 @@ async def receive_messages(websocket, username, setup_done):
                 log_session(f"SYSTEM: {data['message']}")
 
                 start_session_log(username, CURRENT_PERSONA)
+
+                PENDING_FIRST_MESSAGE = None
 
             # ==========================================
             # SETUP REQUIRED
@@ -474,9 +480,9 @@ async def receive_messages(websocket, username, setup_done):
 
 async def send_messages(websocket, setup_done):
 
-    await setup_done.wait()
-
     while True:
+
+        await setup_done.wait()
 
         msg = await asyncio.to_thread(
             getpass.getpass,
@@ -486,7 +492,10 @@ async def send_messages(websocket, setup_done):
         if not msg:
             continue
 
-        log_session(f"You: {msg}")
+        if not setup_done.is_set():
+            continue
+
+        display_own_message(msg)
 
         await websocket.send(msg)
 
