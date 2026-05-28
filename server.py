@@ -3,144 +3,156 @@ from openai import OpenAI
 import json
 import os
 from datetime import datetime
-import asyncio
-import time
 
 app = FastAPI()
 
 clients = {}
-personas = {}
 history = []
 
 ai_awake = True
-scenario_mode = False
-
-# track activity per connection
-last_seen = {}
 
 ai_config = {
     "name": "DEEPSEEK",
     "behavior": "Helpful and intelligent.",
     "reasoning_level": "medium",
     "show_reasoning": False,
-    "first_message": "",
     "configured": False
 }
+
 
 # =====================================================
 # API KEY
 # =====================================================
 
 API_KEY = os.getenv("DEEPSEEK_API_KEY")
+
 if not API_KEY:
-    raise ValueError("DEEPSEEK_API_KEY environment variable not found.")
+
+    raise ValueError(
+        "DEEPSEEK_API_KEY environment variable not found."
+    )
 
 client = OpenAI(
     api_key=API_KEY,
     base_url="https://api.deepseek.com/v1"
 )
 
-# =====================================================
-# HEARTBEAT SYSTEM
-# =====================================================
-
-async def heartbeat():
-    while True:
-        await asyncio.sleep(30)
-
-        now = time.time()
-        dead = []
-
-        for ws in list(clients.keys()):
-            if now - last_seen.get(ws, now) > 120:
-                dead.append(ws)
-
-        for ws in dead:
-            try:
-                await ws.close()
-            except:
-                pass
-            clients.pop(ws, None)
-            personas.pop(ws, None)
-            last_seen.pop(ws, None)
 
 # =====================================================
 # BROADCAST
 # =====================================================
 
 async def broadcast(data):
+
     dead = []
 
     for ws in clients:
+
         try:
             await ws.send_text(json.dumps(data))
+
         except:
             dead.append(ws)
 
     for ws in dead:
-        clients.pop(ws, None)
-        personas.pop(ws, None)
-        last_seen.pop(ws, None)
+
+        if ws in clients:
+            del clients[ws]
+
 
 # =====================================================
-# DISCONNECT OTHERS
+# EXPORT SESSION
 # =====================================================
 
-async def disconnect_all_except(keep_ws):
-    for ws in list(clients.keys()):
-        if ws != keep_ws:
-            try:
-                await ws.close()
-            except:
-                pass
+def export_session():
 
-            clients.pop(ws, None)
-            personas.pop(ws, None)
-            last_seen.pop(ws, None)
+    filename = (
+        "session_"
+        + datetime.now().strftime("%Y%m%d_%H%M%S")
+        + ".json"
+    )
+
+    data = {
+        "history": history,
+        "ai_config": ai_config
+    }
+
+    with open(filename, "w", encoding="utf-8") as f:
+
+        json.dump(
+            data,
+            f,
+            indent=2,
+            ensure_ascii=False
+        )
+
+    return filename
+
 
 # =====================================================
-# STARTUP
+# IMPORT SESSION
 # =====================================================
 
-@app.on_event("startup")
-async def startup():
-    asyncio.create_task(heartbeat())
+def import_session(filename):
+
+    global history
+    global ai_config
+
+    with open(filename, "r", encoding="utf-8") as f:
+
+        data = json.load(f)
+
+    history = data.get("history", [])
+
+    loaded_config = data.get(
+        "ai_config",
+        {}
+    )
+
+    ai_config.update(loaded_config)
+
 
 # =====================================================
-# ROOT
+# ROOT TEST
 # =====================================================
 
 @app.get("/")
 def home():
-    return {"status": "server running"}
+
+    return {
+        "status": "server running"
+    }
+
 
 # =====================================================
-# WEBSOCKET
+# WEBSOCKET CHAT
 # =====================================================
 
 @app.websocket("/chat")
 async def chat(ws: WebSocket):
 
-    global ai_awake, scenario_mode
+    global ai_awake
 
     await ws.accept()
+await ws.send_text(json.dumps({"type": "system", "message": "connected"}))
 
     username = await ws.receive_text()
+
     clients[ws] = username
-    last_seen[ws] = time.time()
 
     print(f"{username} connected.")
 
     # =================================================
-    # AI CONFIG
+    # FIRST USER CONFIGURES AI
     # =================================================
 
     if not ai_config["configured"]:
 
-        await ws.send_text(json.dumps({"type": "setup_required"}))
+        await ws.send_text(json.dumps({
+            "type": "setup_required"
+        }))
 
         raw = await ws.receive_text()
-        last_seen[ws] = time.time()
 
         setup = json.loads(raw)
 
@@ -148,15 +160,16 @@ async def chat(ws: WebSocket):
         ai_config["behavior"] = setup["behavior"]
         ai_config["reasoning_level"] = setup["reasoning_level"]
         ai_config["show_reasoning"] = setup["show_reasoning"]
-        ai_config["first_message"] = setup.get("first_message", "")
         ai_config["configured"] = True
 
         print("AI configured.")
 
     else:
+
         await ws.send_text(json.dumps({
             "type": "system",
-            "message": f"Connected to {ai_config['name']}"
+            "message":
+                f"Connected to {ai_config['name']}"
         }))
 
     # =================================================
@@ -164,94 +177,132 @@ async def chat(ws: WebSocket):
     # =================================================
 
     try:
+
         while True:
 
             msg = await ws.receive_text()
-            last_seen[ws] = time.time()
 
             print(f"{username}: {msg}")
 
-            # =================================================
+            # =========================================
             # COMMANDS
-            # =================================================
+            # =========================================
 
             if msg.startswith("/"):
 
                 command = msg.lower().strip()
 
+                # -------------------------------------
+                # /sleep
+                # -------------------------------------
+
                 if command == "/sleep":
+
                     ai_awake = False
-                    await broadcast({"type": "system", "message": "AI is now sleeping."})
-                    continue
-
-                elif command == "/wake":
-                    ai_awake = True
-                    await broadcast({"type": "system", "message": "AI is now awake."})
-                    continue
-
-                elif command == "/clear":
-                    history.clear()
-                    await broadcast({"type": "system", "message": "Conversation history cleared."})
-                    continue
-
-                elif command == "/scenario":
-
-                    scenario_mode = True
-
-                    await disconnect_all_except(ws)
-
-                    await ws.send_text(json.dumps({
-                        "type": "system",
-                        "message": "Scenario mode activated. Reconfiguring AI..."
-                    }))
-
-                    await ws.send_text(json.dumps({"type": "setup_required"}))
-
-                    raw = await ws.receive_text()
-                    last_seen[ws] = time.time()
-
-                    setup = json.loads(raw)
-
-                    ai_config["name"] = setup["ai_name"]
-                    ai_config["behavior"] = setup["behavior"]
-                    ai_config["reasoning_level"] = setup["reasoning_level"]
-                    ai_config["show_reasoning"] = setup["show_reasoning"]
-                    ai_config["first_message"] = setup.get("first_message", "")
-                    ai_config["configured"] = True
-
-                    history.clear()
-
-                    if ai_config["first_message"]:
-                        history.append({
-                            "role": "assistant",
-                            "content": ai_config["first_message"]
-                        })
 
                     await broadcast({
                         "type": "system",
-                        "message": "Scenario initialized."
+                        "message":
+                            "AI is now sleeping."
                     })
 
                     continue
 
-            # =================================================
-            # PERSONA
-            # =================================================
+                # -------------------------------------
+                # /wake
+                # -------------------------------------
 
-            if ws not in personas:
-                await ws.send_text(json.dumps({"type": "request_persona"}))
-                persona = await ws.receive_text()
-                last_seen[ws] = time.time()
-                personas[ws] = persona
+                elif command == "/wake":
 
-            # =================================================
-            # BROADCAST MESSAGE
-            # =================================================
+                    ai_awake = True
+
+                    await broadcast({
+                        "type": "system",
+                        "message":
+                            "AI is now awake."
+                    })
+
+                    continue
+
+                # -------------------------------------
+                # /clear
+                # -------------------------------------
+
+                elif command == "/clear":
+
+                    history.clear()
+
+                    await broadcast({
+                        "type": "system",
+                        "message":
+                            "Conversation history cleared."
+                    })
+
+                    continue
+
+                # -------------------------------------
+                # /export
+                # -------------------------------------
+
+                elif command == "/export":
+
+                    filename = export_session()
+
+                    await broadcast({
+                        "type": "system",
+                        "message":
+                            f"Session exported to {filename}"
+                    })
+
+                    continue
+
+                # -------------------------------------
+                # /import
+                # -------------------------------------
+
+                elif command.startswith("/import"):
+
+                    try:
+
+                        parts = msg.split(maxsplit=1)
+
+                        if len(parts) < 2:
+
+                            await ws.send_text(json.dumps({
+                                "type": "system",
+                                "message":
+                                    "Usage: /import filename.json"
+                            }))
+
+                            continue
+
+                        filename = parts[1]
+
+                        import_session(filename)
+
+                        await broadcast({
+                            "type": "system",
+                            "message":
+                                f"Imported session {filename}"
+                        })
+
+                    except Exception as e:
+
+                        await ws.send_text(json.dumps({
+                            "type": "system",
+                            "message":
+                                f"Import failed: {e}"
+                        }))
+
+                    continue
+
+            # =========================================
+            # USER MESSAGE BROADCAST
+            # =========================================
 
             await broadcast({
                 "type": "chat",
                 "sender": username,
-                "persona": personas.get(ws, ""),
                 "message": msg
             })
 
@@ -260,12 +311,16 @@ async def chat(ws: WebSocket):
                 "content": f"{username}: {msg}"
             })
 
+            # =========================================
+            # AI SLEEP CHECK
+            # =========================================
+
             if not ai_awake:
                 continue
 
-            # =================================================
+            # =========================================
             # AI RESPONSE
-            # =================================================
+            # =========================================
 
             try:
 
@@ -276,29 +331,56 @@ async def chat(ws: WebSocket):
                             "role": "system",
                             "content":
                                 f"You are {ai_config['name']}. "
-                                f"{ai_config['behavior']}. "
-                                f"Scenario intro: {ai_config.get('first_message','')}"
+                                f"{ai_config['behavior']}"
                         }
                     ] + history[-20:],
-                    reasoning_effort=ai_config["reasoning_level"]
+                    reasoning_effort=ai_config[
+                        "reasoning_level"
+                    ]
                 )
 
                 message = response.choices[0].message
-                reply = message.content or ""
-                reasoning = getattr(message, "reasoning_content", None)
+
+                reply = (
+                    message.content
+                    if message.content
+                    else ""
+                )
+
+                reasoning = getattr(
+                    message,
+                    "reasoning_content",
+                    None
+                )
 
             except Exception as e:
+
                 reply = f"ERROR: {e}"
                 reasoning = None
 
-            history.append({"role": "assistant", "content": reply})
+            history.append({
+                "role": "assistant",
+                "content": reply
+            })
 
-            if ai_config["show_reasoning"] and reasoning:
+            # =========================================
+            # REASONING BROADCAST
+            # =========================================
+
+            if (
+                ai_config["show_reasoning"]
+                and reasoning
+            ):
+
                 await broadcast({
                     "type": "reasoning",
                     "sender": ai_config["name"],
                     "message": reasoning
                 })
+
+            # =========================================
+            # FINAL AI MESSAGE
+            # =========================================
 
             await broadcast({
                 "type": "chat",
@@ -307,9 +389,13 @@ async def chat(ws: WebSocket):
             })
 
     except Exception as e:
-        print(f"{username} disconnected. Reason: {e}")
+
+        print(
+            f"{username} disconnected. "
+            f"Reason: {e}"
+        )
 
     finally:
-        clients.pop(ws, None)
-        personas.pop(ws, None)
-        last_seen.pop(ws, None)
+
+        if ws in clients:
+            del clients[ws]
