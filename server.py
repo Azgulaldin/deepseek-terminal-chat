@@ -1,4 +1,3 @@
-```python
 from fastapi import FastAPI, WebSocket
 from openai import OpenAI
 import json
@@ -399,4 +398,3 @@ async def chat(ws: WebSocket):
 
         if ws in clients:
             del clients[ws]
-```
