@@ -1,4 +1,4 @@
 {
-  "username": "eather",
-  "persona": "hot"
+  "username": "Eather",
+  "persona": "18 year old male"
 }

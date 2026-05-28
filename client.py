@@ -123,7 +123,7 @@ def load_ai_persona():
     )
 
 
-async def receive_messages(websocket, username):
+async def receive_messages(websocket, username, setup_done):
 
     while True:
 
@@ -154,17 +154,14 @@ async def receive_messages(websocket, username):
                 sender = data["sender"]
                 message = data["message"]
 
+                # Don't echo your own message a second time
+                if sender == username:
+                    continue
+
                 line()
 
-                # Your own message → right side
-                if sender == username:
-
-                    print(
-                        f"You: {message}".rjust(WIDTH)
-                    )
-
                 # AI
-                elif sender.upper() == sender:
+                if sender.upper() == sender:
 
                     print(f"[{sender}]: {message}")
 
@@ -311,12 +308,8 @@ async def receive_messages(websocket, username):
 
                 setup_data = {
                     "ai_name": ai_name,
-                    "behavior": (
-                        behavior
-                        + "\n\n"
-                        + "First message: "
-                        + first_message
-                    ),
+                    "behavior": behavior,
+                    "first_message": first_message,
                     "reasoning_level":
                         reasoning_level,
                     "show_reasoning":
@@ -333,6 +326,15 @@ async def receive_messages(websocket, username):
 
                 line()
 
+                # Show the AI's first message locally once setup is complete
+                if first_message.strip():
+
+                    line()
+                    print(f"[{ai_name}]: {first_message}")
+                    line()
+
+                setup_done.set()
+
         except Exception as e:
 
             print(
@@ -342,7 +344,9 @@ async def receive_messages(websocket, username):
             break
 
 
-async def send_messages(websocket):
+async def send_messages(websocket, setup_done):
+
+    await setup_done.wait()
 
     while True:
 
@@ -406,6 +410,8 @@ async def main():
 
         line()
 
+    setup_done = asyncio.Event()
+
     async with websockets.connect(
         SERVER_URL
     ) as websocket:
@@ -424,9 +430,13 @@ async def main():
         await asyncio.gather(
             receive_messages(
                 websocket,
-                username
+                username,
+                setup_done
             ),
-            send_messages(websocket)
+            send_messages(
+                websocket,
+                setup_done
+            )
         )
 
 
