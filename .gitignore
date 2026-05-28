@@ -1,0 +1,6 @@
+```text
+__pycache__/
+*.pyc
+*.json
+.env
+```
