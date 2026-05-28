@@ -1,14 +1,126 @@
 import asyncio
 import json
 import websockets
+import os
 
 SERVER_URL = "wss://deepseek-terminal-chat-production-78d3.up.railway.app/chat"
 
 WIDTH = 90
 
+PERSONA_FILE = "persona.txt"
+AI_PERSONA_FILE = "ai_persona.txt"
+
 
 def line():
     print("=" * WIDTH)
+
+
+# =====================================================
+# SAVE PERSONA
+# =====================================================
+
+def save_persona(username, persona):
+
+    data = {
+        "username": username,
+        "persona": persona
+    }
+
+    with open(
+        PERSONA_FILE,
+        "w",
+        encoding="utf-8"
+    ) as f:
+
+        json.dump(
+            data,
+            f,
+            indent=2,
+            ensure_ascii=False
+        )
+
+
+# =====================================================
+# LOAD PERSONA
+# =====================================================
+
+def load_persona():
+
+    with open(
+        PERSONA_FILE,
+        "r",
+        encoding="utf-8"
+    ) as f:
+
+        data = json.load(f)
+
+    username = data["username"]
+    persona = data["persona"]
+
+    return username, persona
+
+
+# =====================================================
+# SAVE AI PERSONA
+# =====================================================
+
+def save_ai_persona(
+    ai_name,
+    behavior,
+    first_message,
+    reasoning_level,
+    show_reasoning
+):
+
+    data = {
+        "ai_name": ai_name,
+        "behavior": behavior,
+        "first_message": first_message,
+        "reasoning_level": reasoning_level,
+        "show_reasoning": show_reasoning
+    }
+
+    with open(
+        AI_PERSONA_FILE,
+        "w",
+        encoding="utf-8"
+    ) as f:
+
+        json.dump(
+            data,
+            f,
+            indent=2,
+            ensure_ascii=False
+        )
+
+
+# =====================================================
+# LOAD AI PERSONA
+# =====================================================
+
+def load_ai_persona():
+
+    with open(
+        AI_PERSONA_FILE,
+        "r",
+        encoding="utf-8"
+    ) as f:
+
+        data = json.load(f)
+
+    ai_name = data["ai_name"]
+    behavior = data["behavior"]
+    first_message = data["first_message"]
+    reasoning_level = data.get("reasoning_level", "medium")
+    show_reasoning = data.get("show_reasoning", False)
+
+    return (
+        ai_name,
+        behavior,
+        first_message,
+        reasoning_level,
+        show_reasoning
+    )
 
 
 async def receive_messages(websocket, username):
@@ -102,49 +214,109 @@ async def receive_messages(websocket, username):
 
                 line()
 
-                ai_name = input(
-                    "AI Name: "
-                ).strip()
+                reconfigure_ai = input(
+                    "Reconfigure AI persona? (y/n): "
+                ).strip().lower()
 
-                behavior = input(
-                    "AI Behavior: "
-                ).strip()
+                line()
 
-                print(
-                    "\nReasoning Intensity:"
-                )
-
-                print("1. easy")
-                print("2. medium")
-                print("3. high")
-
-                choice = input(
-                    "\nChoose option: "
-                ).strip()
-
-                mapping = {
-                    "1": "low",
-                    "2": "medium",
-                    "3": "high"
-                }
-
-                reasoning_level = mapping.get(
-                    choice,
-                    "medium"
-                )
-
-                show_reasoning = (
-                    input(
-                        "\nShow reasoning? (y/n): "
+                if (
+                    reconfigure_ai == "y"
+                    or not os.path.exists(
+                        AI_PERSONA_FILE
                     )
-                    .strip()
-                    .lower()
-                    == "y"
-                )
+                ):
+
+                    ai_name = input(
+                        "AI Name: "
+                    ).strip()
+
+                    behavior = input(
+                        "AI Behavior: "
+                    ).strip()
+
+                    first_message = input(
+                        "First Message: "
+                    ).strip()
+
+                    print(
+                        "\nReasoning Intensity:"
+                    )
+
+                    print("1. easy")
+                    print("2. medium")
+                    print("3. high")
+
+                    choice = input(
+                        "\nChoose option: "
+                    ).strip()
+
+                    mapping = {
+                        "1": "low",
+                        "2": "medium",
+                        "3": "high"
+                    }
+
+                    reasoning_level = mapping.get(
+                        choice,
+                        "medium"
+                    )
+
+                    show_reasoning = (
+                        input(
+                            "\nShow reasoning? (y/n): "
+                        )
+                        .strip()
+                        .lower()
+                        == "y"
+                    )
+
+                    save_ai_persona(
+                        ai_name,
+                        behavior,
+                        first_message,
+                        reasoning_level,
+                        show_reasoning
+                    )
+
+                    line()
+
+                    print(
+                        "AI persona saved locally."
+                    )
+
+                    line()
+
+                else:
+
+                    (
+                        ai_name,
+                        behavior,
+                        first_message,
+                        reasoning_level,
+                        show_reasoning
+                    ) = load_ai_persona()
+
+                    line()
+
+                    print(
+                        "Loaded saved AI persona."
+                    )
+
+                    print(
+                        f"AI Name: {ai_name}"
+                    )
+
+                    line()
 
                 setup_data = {
                     "ai_name": ai_name,
-                    "behavior": behavior,
+                    "behavior": (
+                        behavior
+                        + "\n\n"
+                        + "First message: "
+                        + first_message
+                    ),
                     "reasoning_level":
                         reasoning_level,
                     "show_reasoning":
@@ -184,9 +356,55 @@ async def send_messages(websocket):
 
 async def main():
 
-    username = input(
-        "Enter username: "
-    ).strip()
+    line()
+
+    reconfigure = input(
+        "Reconfigure persona? (y/n): "
+    ).strip().lower()
+
+    line()
+
+    if (
+        reconfigure == "y"
+        or not os.path.exists(PERSONA_FILE)
+    ):
+
+        username = input(
+            "Enter username: "
+        ).strip()
+
+        persona = input(
+            "Enter persona: "
+        ).strip()
+
+        save_persona(
+            username,
+            persona
+        )
+
+        line()
+
+        print(
+            "Persona saved locally."
+        )
+
+        line()
+
+    else:
+
+        username, persona = load_persona()
+
+        line()
+
+        print(
+            "Loaded saved persona."
+        )
+
+        print(
+            f"Username: {username}"
+        )
+
+        line()
 
     async with websockets.connect(
         SERVER_URL

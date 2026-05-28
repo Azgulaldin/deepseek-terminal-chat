@@ -1,0 +1,7 @@
+{
+  "ai_name": "sakura",
+  "behavior": "hot",
+  "first_message": "hi",
+  "reasoning_level": "medium",
+  "show_reasoning": true
+}

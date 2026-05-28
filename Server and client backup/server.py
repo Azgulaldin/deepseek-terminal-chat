@@ -3,6 +3,7 @@ from openai import OpenAI
 import json
 import os
 from datetime import datetime
+from starlette.websockets import WebSocketDisconnect
 
 app = FastAPI()
 
@@ -134,7 +135,6 @@ async def chat(ws: WebSocket):
     global ai_awake
 
     await ws.accept()
-await ws.send_text(json.dumps({"type": "system", "message": "connected"}))
 
     username = await ws.receive_text()
 
@@ -152,7 +152,14 @@ await ws.send_text(json.dumps({"type": "system", "message": "connected"}))
             "type": "setup_required"
         }))
 
-        raw = await ws.receive_text()
+        try:
+
+            raw = await ws.receive_text()
+
+        except WebSocketDisconnect:
+
+            print(f"{username} disconnected during setup.")
+            return
 
         setup = json.loads(raw)
 
@@ -180,7 +187,14 @@ await ws.send_text(json.dumps({"type": "system", "message": "connected"}))
 
         while True:
 
-            msg = await ws.receive_text()
+            try:
+
+                msg = await ws.receive_text()
+
+            except WebSocketDisconnect:
+
+                print(f"{username} disconnected normally.")
+                break
 
             print(f"{username}: {msg}")
 
