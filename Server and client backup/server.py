@@ -15,6 +15,7 @@ ai_awake = True
 ai_config = {
     "name": "DEEPSEEK",
     "behavior": "Helpful and intelligent.",
+    "first_message": "",
     "reasoning_level": "medium",
     "show_reasoning": False,
     "configured": False
@@ -165,11 +166,27 @@ async def chat(ws: WebSocket):
 
         ai_config["name"] = setup["ai_name"]
         ai_config["behavior"] = setup["behavior"]
+        ai_config["first_message"] = setup.get("first_message", "")
         ai_config["reasoning_level"] = setup["reasoning_level"]
         ai_config["show_reasoning"] = setup["show_reasoning"]
         ai_config["configured"] = True
 
         print("AI configured.")
+
+        if ai_config["first_message"].strip():
+
+            first_message = ai_config["first_message"]
+
+            history.append({
+                "role": "assistant",
+                "content": first_message
+            })
+
+            await broadcast({
+                "type": "chat",
+                "sender": ai_config["name"],
+                "message": first_message
+            })
 
     else:
 

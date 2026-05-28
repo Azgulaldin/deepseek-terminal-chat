@@ -11,6 +11,7 @@ clients = {}
 history = []
 
 ai_awake = True
+setup_owner = None
 
 ai_config = {
     "name": "DEEPSEEK",
@@ -60,6 +61,84 @@ async def broadcast(data):
 
         if ws in clients:
             del clients[ws]
+
+
+# =====================================================
+# HISTORY REPLAY
+# =====================================================
+
+def normalize_history_entry(entry):
+
+    sender = entry.get("sender")
+
+    if sender:
+        return entry
+
+    role = entry.get("role", "")
+    content = entry.get("content", "")
+
+    if role == "assistant":
+        sender = ai_config["name"]
+    else:
+        if ": " in content:
+            sender, content = content.split(": ", 1)
+        else:
+            sender = "UNKNOWN"
+
+    return {
+        "role": role,
+        "sender": sender,
+        "content": content
+    }
+
+
+async def replay_history(ws):
+
+    for entry in history:
+
+        entry = normalize_history_entry(entry)
+
+        try:
+            await ws.send_text(json.dumps({
+                "type": "chat",
+                "sender": entry.get("sender", "UNKNOWN"),
+                "message": entry.get("content", "")
+            }))
+
+        except:
+            break
+
+
+# =====================================================
+# SESSION CONTROL
+# =====================================================
+
+def apply_ai_setup(setup):
+
+    ai_config["name"] = setup["ai_name"]
+    ai_config["behavior"] = setup["behavior"]
+    ai_config["first_message"] = setup.get("first_message", "")
+    ai_config["reasoning_level"] = setup["reasoning_level"]
+    ai_config["show_reasoning"] = setup["show_reasoning"]
+    ai_config["configured"] = True
+
+
+def append_user_message(username, msg):
+
+    history.append({
+        "role": "user",
+        "sender": username,
+        "content": msg
+    })
+
+
+def append_assistant_message(sender, reply):
+
+    history.append({
+        "role": "assistant",
+        "sender": sender,
+        "content": reply
+    })
 
 
 # =====================================================
@@ -134,6 +213,7 @@ def home():
 async def chat(ws: WebSocket):
 
     global ai_awake
+    global setup_owner
 
     await ws.accept()
 
@@ -149,6 +229,8 @@ async def chat(ws: WebSocket):
 
     if not ai_config["configured"]:
 
+        setup_owner = ws
+
         await ws.send_text(json.dumps({
             "type": "setup_required"
         }))
@@ -160,33 +242,45 @@ async def chat(ws: WebSocket):
         except WebSocketDisconnect:
 
             print(f"{username} disconnected during setup.")
+            if setup_owner == ws:
+                setup_owner = None
             return
 
-        setup = json.loads(raw)
+        try:
+            setup = json.loads(raw)
 
-        ai_config["name"] = setup["ai_name"]
-        ai_config["behavior"] = setup["behavior"]
-        ai_config["first_message"] = setup.get("first_message", "")
-        ai_config["reasoning_level"] = setup["reasoning_level"]
-        ai_config["show_reasoning"] = setup["show_reasoning"]
-        ai_config["configured"] = True
+            apply_ai_setup(setup)
 
-        print("AI configured.")
+            setup_owner = None
 
-        if ai_config["first_message"].strip():
+            print("AI configured.")
 
-            first_message = ai_config["first_message"]
+            if ai_config["first_message"].strip():
 
-            history.append({
-                "role": "assistant",
-                "content": first_message
-            })
+                first_message = ai_config["first_message"]
 
-            await broadcast({
-                "type": "chat",
-                "sender": ai_config["name"],
-                "message": first_message
-            })
+                append_assistant_message(
+                    ai_config["name"],
+                    first_message
+                )
+
+                await broadcast({
+                    "type": "chat",
+                    "sender": ai_config["name"],
+                    "message": first_message
+                })
+
+        except Exception as e:
+
+            await ws.send_text(json.dumps({
+                "type": "system",
+                "message": f"AI setup failed: {e}"
+            }))
+
+            if setup_owner == ws:
+                setup_owner = None
+
+            return
 
     else:
 
@@ -195,6 +289,8 @@ async def chat(ws: WebSocket):
             "message":
                 f"Connected to {ai_config['name']}"
         }))
+
+        await replay_history(ws)
 
     # =================================================
     # MAIN LOOP
@@ -214,6 +310,74 @@ async def chat(ws: WebSocket):
                 break
 
             print(f"{username}: {msg}")
+
+            # =========================================
+            # IF AI SETUP IS NOT COMPLETE
+            # =========================================
+
+            if not ai_config["configured"]:
+
+                if ws != setup_owner:
+
+                    await ws.send_text(json.dumps({
+                        "type": "system",
+                        "message":
+                            "AI is being reconfigured. Please wait."
+                    }))
+
+                    continue
+
+                try:
+
+                    setup = json.loads(msg)
+
+                    required_keys = (
+                        "ai_name",
+                        "behavior",
+                        "first_message",
+                        "reasoning_level",
+                        "show_reasoning"
+                    )
+
+                    if not all(k in setup for k in required_keys):
+                        raise ValueError("invalid setup data")
+
+                    apply_ai_setup(setup)
+
+                    setup_owner = None
+
+                    print("AI configured.")
+
+                    await broadcast({
+                        "type": "system",
+                        "message":
+                            f"AI configured as {ai_config['name']}."
+                    })
+
+                    if ai_config["first_message"].strip():
+
+                        first_message = ai_config["first_message"]
+
+                        append_assistant_message(
+                            ai_config["name"],
+                            first_message
+                        )
+
+                        await broadcast({
+                            "type": "chat",
+                            "sender": ai_config["name"],
+                            "message": first_message
+                        })
+
+                except Exception as e:
+
+                    await ws.send_text(json.dumps({
+                        "type": "system",
+                        "message":
+                            f"Invalid AI setup data: {e}"
+                    }))
+
+                continue
 
             # =========================================
             # COMMANDS
@@ -267,6 +431,44 @@ async def chat(ws: WebSocket):
                         "type": "system",
                         "message":
                             "Conversation history cleared."
+                    })
+
+                    continue
+
+                # -------------------------------------
+                # /scenario
+                # -------------------------------------
+
+                elif command == "/scenario":
+
+                    ai_config["configured"] = False
+                    ai_config["first_message"] = ""
+                    setup_owner = ws
+
+                    await broadcast({
+                        "type": "scenario_reset",
+                        "message":
+                            "AI scenario reset. Reconfigure the AI."
+                    })
+
+                    await ws.send_text(json.dumps({
+                        "type": "setup_required"
+                    }))
+
+                    continue
+
+                # -------------------------------------
+                # /new
+                # -------------------------------------
+
+                elif command == "/new":
+
+                    history.clear()
+
+                    await broadcast({
+                        "type": "new_session",
+                        "message":
+                            "New session started."
                     })
 
                     continue
@@ -337,10 +539,7 @@ async def chat(ws: WebSocket):
                 "message": msg
             })
 
-            history.append({
-                "role": "user",
-                "content": f"{username}: {msg}"
-            })
+            append_user_message(username, msg)
 
             # =========================================
             # AI SLEEP CHECK
@@ -364,7 +563,13 @@ async def chat(ws: WebSocket):
                                 f"You are {ai_config['name']}. "
                                 f"{ai_config['behavior']}"
                         }
-                    ] + history[-20:],
+                    ] + [
+                        {
+                            "role": item["role"],
+                            "content": item["content"]
+                        }
+                        for item in history[-20:]
+                    ],
                     reasoning_effort=ai_config[
                         "reasoning_level"
                     ]
@@ -389,10 +594,10 @@ async def chat(ws: WebSocket):
                 reply = f"ERROR: {e}"
                 reasoning = None
 
-            history.append({
-                "role": "assistant",
-                "content": reply
-            })
+            append_assistant_message(
+                ai_config["name"],
+                reply
+            )
 
             # =========================================
             # REASONING BROADCAST
@@ -430,3 +635,6 @@ async def chat(ws: WebSocket):
 
         if ws in clients:
             del clients[ws]
+
+        if setup_owner == ws:
+            setup_owner = None
