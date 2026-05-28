@@ -17,26 +17,18 @@ def line():
 
 async def receive_messages(websocket, username):
 
-    while True:
+    try:
+        while True:
 
-        try:
             raw = await websocket.recv()
             data = json.loads(raw)
 
             msg_type = data.get("type")
 
-            # ==========================================
-            # SYSTEM MESSAGE
-            # ==========================================
-
             if msg_type == "system":
                 line()
-                print(data["message"])
+                print(data.get("message", ""))
                 line()
-
-            # ==========================================
-            # CHAT MESSAGE
-            # ==========================================
 
             elif msg_type == "chat":
 
@@ -46,15 +38,12 @@ async def receive_messages(websocket, username):
 
                 line()
 
-                # your message
                 if sender == username:
                     print(f"You: {message}".rjust(WIDTH))
 
-                # AI (uppercase convention)
-                elif sender.upper() == sender:
+                elif sender and sender.upper() == sender:
                     print(f"[{sender}]: {message}")
 
-                # other users
                 else:
                     if persona:
                         print(f"[{sender} | {persona}]: {message}")
@@ -62,10 +51,6 @@ async def receive_messages(websocket, username):
                         print(f"[{sender}]: {message}")
 
                 line()
-
-            # ==========================================
-            # REASONING MESSAGE
-            # ==========================================
 
             elif msg_type == "reasoning":
 
@@ -76,10 +61,6 @@ async def receive_messages(websocket, username):
                 print(f"[{sender} REASONING]\n")
                 print(message)
                 line()
-
-            # ==========================================
-            # SETUP REQUIRED (AI CONFIG)
-            # ==========================================
 
             elif msg_type == "setup_required":
 
@@ -110,7 +91,7 @@ async def receive_messages(websocket, username):
                 ).strip().lower() == "y"
 
                 first_message = input(
-                    "\nAI First Message (scenario intro): "
+                    "\nAI First Message: "
                 ).strip()
 
                 setup_data = {
@@ -127,14 +108,10 @@ async def receive_messages(websocket, username):
                 print("AI configured.")
                 line()
 
-            # ==========================================
-            # REQUEST PERSONA
-            # ==========================================
-
             elif msg_type == "request_persona":
 
                 line()
-                print("Define your persona (how you appear in chat)")
+                print("Set your persona:")
                 line()
 
                 persona = input("> ").strip()
@@ -145,20 +122,60 @@ async def receive_messages(websocket, username):
                 print("Persona set.")
                 line()
 
-        except Exception as e:
-            print(f"\nDisconnected: {e}")
-            break
+    except websockets.ConnectionClosed:
+        raise
 
 
 # =====================================================
-# SEND LOOP
+# SEND LOOP (SAFE)
 # =====================================================
 
 async def send_messages(websocket):
 
+    try:
+        while True:
+            msg = await asyncio.to_thread(input, "")
+
+            await websocket.send(msg)
+
+    except websockets.ConnectionClosed:
+        raise
+
+
+# =====================================================
+# CONNECT WITH AUTO RECONNECT
+# =====================================================
+
+async def connect(username):
+
     while True:
-        msg = await asyncio.to_thread(input, "")
-        await websocket.send(msg)
+
+        try:
+            async with websockets.connect(
+                SERVER_URL,
+                ping_interval=25,
+                ping_timeout=120,
+                close_timeout=120,
+                max_queue=None
+            ) as websocket:
+
+                await websocket.send(username)
+
+                line()
+                print(f"Connected as {username}")
+                line()
+
+                await asyncio.gather(
+                    receive_messages(websocket, username),
+                    send_messages(websocket)
+                )
+
+        except Exception as e:
+
+            print("\nDisconnected. Reconnecting...")
+            print(f"Reason: {e}")
+
+            await asyncio.sleep(3)
 
 
 # =====================================================
@@ -168,24 +185,7 @@ async def send_messages(websocket):
 async def main():
 
     username = input("Enter username: ").strip()
-
-    async with websockets.connect(
-        SERVER_URL,
-        ping_interval=20,
-        ping_timeout=20
-    ) as websocket:
-
-        # send username first
-        await websocket.send(username)
-
-        line()
-        print(f"Connected as {username}")
-        line()
-
-        await asyncio.gather(
-            receive_messages(websocket, username),
-            send_messages(websocket)
-        )
+    await connect(username)
 
 
 asyncio.run(main())

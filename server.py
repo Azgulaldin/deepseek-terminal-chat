@@ -3,6 +3,8 @@ from openai import OpenAI
 import json
 import os
 from datetime import datetime
+import asyncio
+import time
 
 app = FastAPI()
 
@@ -13,6 +15,9 @@ history = []
 ai_awake = True
 scenario_mode = False
 
+# track activity per connection
+last_seen = {}
+
 ai_config = {
     "name": "DEEPSEEK",
     "behavior": "Helpful and intelligent.",
@@ -22,13 +27,11 @@ ai_config = {
     "configured": False
 }
 
-
 # =====================================================
 # API KEY
 # =====================================================
 
 API_KEY = os.getenv("DEEPSEEK_API_KEY")
-
 if not API_KEY:
     raise ValueError("DEEPSEEK_API_KEY environment variable not found.")
 
@@ -37,6 +40,29 @@ client = OpenAI(
     base_url="https://api.deepseek.com/v1"
 )
 
+# =====================================================
+# HEARTBEAT SYSTEM
+# =====================================================
+
+async def heartbeat():
+    while True:
+        await asyncio.sleep(30)
+
+        now = time.time()
+        dead = []
+
+        for ws in list(clients.keys()):
+            if now - last_seen.get(ws, now) > 120:
+                dead.append(ws)
+
+        for ws in dead:
+            try:
+                await ws.close()
+            except:
+                pass
+            clients.pop(ws, None)
+            personas.pop(ws, None)
+            last_seen.pop(ws, None)
 
 # =====================================================
 # BROADCAST
@@ -54,27 +80,31 @@ async def broadcast(data):
     for ws in dead:
         clients.pop(ws, None)
         personas.pop(ws, None)
-
+        last_seen.pop(ws, None)
 
 # =====================================================
-# DISCONNECT ALL EXCEPT ONE
+# DISCONNECT OTHERS
 # =====================================================
 
 async def disconnect_all_except(keep_ws):
-    dead = []
-
     for ws in list(clients.keys()):
         if ws != keep_ws:
             try:
                 await ws.close()
             except:
                 pass
-            dead.append(ws)
 
-    for ws in dead:
-        clients.pop(ws, None)
-        personas.pop(ws, None)
+            clients.pop(ws, None)
+            personas.pop(ws, None)
+            last_seen.pop(ws, None)
 
+# =====================================================
+# STARTUP
+# =====================================================
+
+@app.on_event("startup")
+async def startup():
+    asyncio.create_task(heartbeat())
 
 # =====================================================
 # ROOT
@@ -84,9 +114,8 @@ async def disconnect_all_except(keep_ws):
 def home():
     return {"status": "server running"}
 
-
 # =====================================================
-# WEBSOCKET CHAT
+# WEBSOCKET
 # =====================================================
 
 @app.websocket("/chat")
@@ -98,20 +127,21 @@ async def chat(ws: WebSocket):
 
     username = await ws.receive_text()
     clients[ws] = username
+    last_seen[ws] = time.time()
 
     print(f"{username} connected.")
 
     # =================================================
-    # FIRST USER CONFIGURES AI
+    # AI CONFIG
     # =================================================
 
     if not ai_config["configured"]:
 
-        await ws.send_text(json.dumps({
-            "type": "setup_required"
-        }))
+        await ws.send_text(json.dumps({"type": "setup_required"}))
 
         raw = await ws.receive_text()
+        last_seen[ws] = time.time()
+
         setup = json.loads(raw)
 
         ai_config["name"] = setup["ai_name"]
@@ -137,6 +167,8 @@ async def chat(ws: WebSocket):
         while True:
 
             msg = await ws.receive_text()
+            last_seen[ws] = time.time()
+
             print(f"{username}: {msg}")
 
             # =================================================
@@ -147,42 +179,21 @@ async def chat(ws: WebSocket):
 
                 command = msg.lower().strip()
 
-                # -------------------------------------
-                # /sleep
-                # -------------------------------------
                 if command == "/sleep":
                     ai_awake = False
-                    await broadcast({
-                        "type": "system",
-                        "message": "AI is now sleeping."
-                    })
+                    await broadcast({"type": "system", "message": "AI is now sleeping."})
                     continue
 
-                # -------------------------------------
-                # /wake
-                # -------------------------------------
                 elif command == "/wake":
                     ai_awake = True
-                    await broadcast({
-                        "type": "system",
-                        "message": "AI is now awake."
-                    })
+                    await broadcast({"type": "system", "message": "AI is now awake."})
                     continue
 
-                # -------------------------------------
-                # /clear
-                # -------------------------------------
                 elif command == "/clear":
                     history.clear()
-                    await broadcast({
-                        "type": "system",
-                        "message": "Conversation history cleared."
-                    })
+                    await broadcast({"type": "system", "message": "Conversation history cleared."})
                     continue
 
-                # -------------------------------------
-                # /scenario (NEW FEATURE)
-                # -------------------------------------
                 elif command == "/scenario":
 
                     scenario_mode = True
@@ -194,11 +205,11 @@ async def chat(ws: WebSocket):
                         "message": "Scenario mode activated. Reconfiguring AI..."
                     }))
 
-                    await ws.send_text(json.dumps({
-                        "type": "setup_required"
-                    }))
+                    await ws.send_text(json.dumps({"type": "setup_required"}))
 
                     raw = await ws.receive_text()
+                    last_seen[ws] = time.time()
+
                     setup = json.loads(raw)
 
                     ai_config["name"] = setup["ai_name"]
@@ -224,18 +235,17 @@ async def chat(ws: WebSocket):
                     continue
 
             # =================================================
-            # PERSONA STORAGE
+            # PERSONA
             # =================================================
 
             if ws not in personas:
-                await ws.send_text(json.dumps({
-                    "type": "request_persona"
-                }))
+                await ws.send_text(json.dumps({"type": "request_persona"}))
                 persona = await ws.receive_text()
+                last_seen[ws] = time.time()
                 personas[ws] = persona
 
             # =================================================
-            # BROADCAST USER MESSAGE
+            # BROADCAST MESSAGE
             # =================================================
 
             await broadcast({
@@ -249,10 +259,6 @@ async def chat(ws: WebSocket):
                 "role": "user",
                 "content": f"{username}: {msg}"
             })
-
-            # =================================================
-            # AI CHECK
-            # =================================================
 
             if not ai_awake:
                 continue
@@ -285,14 +291,7 @@ async def chat(ws: WebSocket):
                 reply = f"ERROR: {e}"
                 reasoning = None
 
-            history.append({
-                "role": "assistant",
-                "content": reply
-            })
-
-            # =================================================
-            # REASONING
-            # =================================================
+            history.append({"role": "assistant", "content": reply})
 
             if ai_config["show_reasoning"] and reasoning:
                 await broadcast({
@@ -300,10 +299,6 @@ async def chat(ws: WebSocket):
                     "sender": ai_config["name"],
                     "message": reasoning
                 })
-
-            # =================================================
-            # AI MESSAGE
-            # =================================================
 
             await broadcast({
                 "type": "chat",
@@ -317,3 +312,4 @@ async def chat(ws: WebSocket):
     finally:
         clients.pop(ws, None)
         personas.pop(ws, None)
+        last_seen.pop(ws, None)
