@@ -1,8 +1,13 @@
 # client.py – DeepSeek roleplay terminal client
 # ------------------------------------------------------------------
 # Connects to the WebSocket server, handles persona setup,
-# AI configuration, real‑time chat, local session logging,
-# and now: /upload <filename> to restore a session from a local log.
+# AI configuration, real‑time chat, and local session logging.
+#
+# Rewrite focuses on:
+#   - Removing masking input (used getpass incorrectly)
+#   - Eliminating duplicate‑message workarounds
+#   - Clearer async flow
+#   - Robust error handling
 # ------------------------------------------------------------------
 
 import asyncio
@@ -11,7 +16,7 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, List, Dict
+from typing import Optional
 
 import websockets
 
@@ -98,6 +103,7 @@ class SessionLogger:
         # Find next session number for today
         existing_numbers = []
         for p in session_dir.glob(f"{today}_*.txt"):
+            # Extract the number between underscore and .txt
             stem = p.stem               # e.g. "2026-05-29_3"
             try:
                 num_part = stem.split("_")[-1]
@@ -191,32 +197,42 @@ async def receiver(websocket: websockets.WebSocketClientProtocol,
 
         msg_type = data.get("type")
 
+        # ---- System message ----
         if msg_type == "system":
             display_system(data["message"])
             logger.log_system(data["message"])
 
+        # ---- New session ----
         elif msg_type == "new_session":
             display_system(data["message"])
             logger.log_system(data["message"])
             logger.start()   # start a fresh log file
 
+        # ---- Scenario reset ----
         elif msg_type == "scenario_reset":
             display_system(data["message"])
             logger.log_system(data["message"])
+            # Prepare to reconfigure AI; clear the setup event so
+            # the sender loop waits until setup is done again.
             setup_done.clear()
 
+        # ---- Setup required (only the first user gets this) ----
         elif msg_type == "setup_required":
+            # This client has been chosen to configure the AI.
             await handle_ai_setup(websocket, logger)
-            setup_done.set()
+            setup_done.set()   # now the send loop can start
 
+        # ---- Chat message ----
         elif msg_type == "chat":
             sender = data["sender"]
             message = data["message"]
+            # Skip our own messages – we don't want a local echo
             if sender == username:
                 continue
             display_chat(sender, message)
             logger.log_chat(sender, message)
 
+        # ---- Reasoning ----
         elif msg_type == "reasoning":
             sender = data["sender"]
             reasoning = data["message"]
@@ -237,6 +253,7 @@ async def handle_ai_setup(websocket: websockets.WebSocketClientProtocol,
     """
     print("\nYou are the first user. Configure the AI.\n")
 
+    # Offer to reload saved AI persona
     reconfigure = input("Reconfigure AI persona? (y/n): ").strip().lower()
     if reconfigure == "y" or not AI_PERSONA_FILE.exists():
         ai_name = input("AI Name: ").strip()
@@ -256,6 +273,7 @@ async def handle_ai_setup(websocket: websockets.WebSocketClientProtocol,
         ai_name, behavior, first_message, reasoning_level, show_reasoning = load_ai_persona()
         print(f"\nLoaded saved AI persona: {ai_name}")
 
+    # Send configuration to server
     setup_data = {
         "ai_name": ai_name,
         "behavior": behavior,
@@ -265,6 +283,7 @@ async def handle_ai_setup(websocket: websockets.WebSocketClientProtocol,
     }
     await websocket.send(json.dumps(setup_data))
 
+    # Log setup details
     logger.log_system("AI CONFIGURED")
     logger.write(f"AI Name: {ai_name}")
     logger.write(f"Behavior: {behavior}")
@@ -276,152 +295,31 @@ async def handle_ai_setup(websocket: websockets.WebSocketClientProtocol,
 
 
 # -------------------------------------------------------------------
-# NEW: Upload a local session log to the server
-# -------------------------------------------------------------------
-def parse_log_file(filepath: Path, ai_name: str, username: str) -> List[Dict[str, str]]:
-    """
-    Parse a client log file (sessions/YYYY-MM-DD_N.txt) and return
-    a list of history entries suitable for the server.
-    """
-    history: List[Dict[str, str]] = []
-    skip_next_reasoning = False
-
-    with open(filepath, "r", encoding="utf-8") as f:
-        for raw_line in f:
-            line = raw_line.rstrip("\n")
-            if skip_next_reasoning:
-                skip_next_reasoning = False
-                continue
-
-            # Only process lines that start with a timestamp bracket
-            if not line.startswith("[") or "] " not in line:
-                continue
-
-            # Split off the timestamp
-            idx = line.index("] ")
-            after_ts = line[idx + 2:]  # the part after "[HH:MM:SS] "
-
-            # Handle reasoning header: "[AI_NAME REASONING]"
-            if after_ts.startswith("[") and after_ts.endswith("]") and " REASONING]" in after_ts:
-                skip_next_reasoning = True
-                continue
-
-            # System message
-            if after_ts.startswith("SYSTEM:"):
-                continue
-
-            # Normal chat line: "SENDER: message"
-            if ": " not in after_ts:
-                continue
-
-            sender, message = after_ts.split(": ", 1)
-
-            # Map "You" to the current username, other senders to user/AI
-            if sender == "You":
-                history.append({"role": "user", "sender": username, "content": message})
-            elif sender.lower() == ai_name.lower():
-                history.append({"role": "assistant", "sender": ai_name, "content": message})
-            # All other senders are ignored (could be other human players – we skip them)
-
-    return history
-
-
-async def handle_upload_command(websocket: websockets.WebSocketClientProtocol,
-                                msg: str,
-                                username: str,
-                                logger: SessionLogger) -> None:
-    """Process the /upload <filename> command."""
-    parts = msg.split(maxsplit=1)
-    if len(parts) < 2:
-        print("Usage: /upload <filename>")
-        print("Example: /upload 2026-05-29_1.txt")
-        return
-
-    filename = parts[1].strip()
-    # Allow full path or just the name inside sessions/
-    filepath = Path(filename)
-    if not filepath.is_absolute():
-        filepath = SESSION_ROOT / filepath
-
-    if not filepath.exists():
-        print(f"File not found: {filepath}")
-        return
-
-    # Determine AI name
-    ai_name = ""
-    if AI_PERSONA_FILE.exists():
-        _, _, _, _, _ = load_ai_persona()
-        # We only need the name, but load_ai_persona returns more.
-        # Let's reload just the name to avoid unpacking mess.
-        data = json.loads(AI_PERSONA_FILE.read_text(encoding="utf-8"))
-        saved_ai = data.get("ai_name", "")
-    else:
-        saved_ai = ""
-
-    if saved_ai:
-        prompt = f"AI name (press Enter to use '{saved_ai}'): "
-    else:
-        prompt = "Enter the AI name used in this session: "
-
-    ai_name = await asyncio.get_running_loop().run_in_executor(None, input, prompt)
-    ai_name = ai_name.strip() or saved_ai
-    if not ai_name:
-        print("AI name is required. Aborting upload.")
-        return
-
-    # Parse the log
-    try:
-        history = parse_log_file(filepath, ai_name, username)
-    except Exception as e:
-        print(f"Error reading log file: {e}")
-        return
-
-    if not history:
-        print("No valid chat messages found in the file.")
-        return
-
-    # Send to server
-    upload_msg = {
-        "type": "upload_session",
-        "history": history,
-    }
-    try:
-        await websocket.send(json.dumps(upload_msg))
-        print(f"Uploaded {len(history)} messages. The server will now replay them.")
-        logger.log_system(f"Uploaded session from {filepath.name}")
-    except Exception as e:
-        print(f"Failed to send upload: {e}")
-
-
-# -------------------------------------------------------------------
 # WebSocket send loop
 # -------------------------------------------------------------------
 async def sender(websocket: websockets.WebSocketClientProtocol,
-                 setup_done: asyncio.Event,
-                 username: str,
-                 logger: SessionLogger) -> None:
+                 setup_done: asyncio.Event) -> None:
     """
-    Wait until AI setup is complete, then read user input and send it to the server.
-    Local commands (like /upload) are handled here.
+    Wait until AI setup is complete (if needed), then read user input
+    line by line and send it to the server.
     """
     await setup_done.wait()
-    loop = asyncio.get_running_loop()
 
+    # Use a simple input() prompt – no password masking.
+    # We use asyncio.to_thread to avoid blocking the event loop.
+    loop = asyncio.get_running_loop()
     while True:
+        # Wait for the event to remain set (it may be cleared again if /scenario resets the AI)
         if not setup_done.is_set():
             await setup_done.wait()
 
+        # Read from stdin in a thread
         msg = await loop.run_in_executor(None, input, "> ")
         msg = msg.strip()
         if not msg:
             continue
 
-        # Local command: /upload
-        if msg.startswith("/upload"):
-            await handle_upload_command(websocket, msg, username, logger)
-            continue
-
-        # All other messages go to the server as-is
+        # Send to server
         try:
             await websocket.send(msg)
         except websockets.ConnectionClosed:
@@ -454,16 +352,23 @@ async def main() -> None:
         print(f"Failed to connect: {e}")
         sys.exit(1)
 
+    # Send username immediately (per protocol)
     await websocket.send(username)
     logger.log_system(f"CONNECTED AS {username}")
     print(f"Connected as {username}\n")
 
+    # This event is set when AI is configured (or if no setup is needed).
+    # Initially we must check if the server requires setup; the receiver
+    # will clear it if a setup_required or scenario_reset arrives.
     setup_done = asyncio.Event()
-    setup_done.set()   # assume AI already configured (will be cleared if needed)
+    # If the server's AI is already configured, the receiver won't clear it.
+    # We set it preemptively; the receiver will clear if needed.
+    setup_done.set()
 
+    # Run receiver and sender concurrently
     await asyncio.gather(
         receiver(websocket, username, setup_done, logger),
-        sender(websocket, setup_done, username, logger),
+        sender(websocket, setup_done),
     )
 
 

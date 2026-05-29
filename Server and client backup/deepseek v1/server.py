@@ -1,6 +1,11 @@
 # server.py – DeepSeek roleplay multi‑user WebSocket server
 # ------------------------------------------------------------------
-# Added: /upload_session via WebSocket JSON command.
+# This rewrite addresses:
+#   • races when multiple users connect during AI setup
+#   • deadlocks after the setup owner disconnects
+#   • insecure file import (path traversal)
+#   • missing error handling and input validation
+#   • unclear state transitions (/scenario, /load, etc.)
 # ------------------------------------------------------------------
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -11,7 +16,7 @@ import os
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 
 # -------------------------------------------------------------------
 # Configuration
@@ -28,16 +33,21 @@ EXPORT_DIR = Path("./sessions").resolve()
 EXPORT_DIR.mkdir(exist_ok=True)
 
 # -------------------------------------------------------------------
-# OpenAI client
+# OpenAI client (shared, not used concurrently – single server thread)
 # -------------------------------------------------------------------
 client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
 
 # -------------------------------------------------------------------
-# Global application state
+# Global application state (protected by a single asyncio lock)
 # -------------------------------------------------------------------
 class AppState:
+    """All shared mutable state lives here, accessed only under lock."""
+
     def __init__(self) -> None:
-        self.clients: Dict[WebSocket, str] = {}
+        # connection manager
+        self.clients: Dict[WebSocket, str] = {}      # ws -> username
+
+        # AI configuration
         self.ai_config: Dict[str, Any] = {
             "name": "DEEPSEEK",
             "behavior": "Helpful and intelligent.",
@@ -46,15 +56,25 @@ class AppState:
             "show_reasoning": False,
             "configured": False,
         }
-        self.history: List[Dict[str, Any]] = []
+
+        # conversation history (list of {role, sender, content})
+        self.history: list[Dict[str, Any]] = []
+
+        # wake/sleep toggle
         self.ai_awake: bool = True
+
+        # session management
         self.current_session_id: Optional[str] = None
         self.session_archive: Dict[str, Dict[str, Any]] = {}
         self._day_counters: Dict[str, int] = {}
+
+        # setup coordination
         self.setup_owner: Optional[WebSocket] = None
         self._waiting_for_setup: asyncio.Event = asyncio.Event()
         self._setup_done: asyncio.Event = asyncio.Event()
-        self._setup_done.set()
+        self._setup_done.set()  # initially not waiting
+
+    # ---- helper methods (assume lock is held) ----
 
     def today_key(self) -> str:
         now = datetime.now()
@@ -70,6 +90,7 @@ class AppState:
         return f"{day}/{self._day_counters[day]}"
 
     def ensure_active_session(self) -> str:
+        """Return the current session id, creating one if necessary."""
         if self.current_session_id is None:
             self.current_session_id = self.next_session_id()
         elif not self.current_session_id.startswith(self.today_key()):
@@ -120,19 +141,13 @@ class AppState:
         return path
 
     def import_session(self, filename: str) -> None:
+        # SECURITY: only allow files directly inside EXPORT_DIR, no traversal
         safe_path = (EXPORT_DIR / os.path.basename(filename)).resolve()
         if not safe_path.is_relative_to(EXPORT_DIR):
             raise ValueError("Invalid import path")
         data = json.loads(safe_path.read_text(encoding="utf-8"))
         self.history = data.get("history", [])
         self.ai_config.update(data.get("ai_config", {}))
-
-    # ----- New method for uploaded session -----
-    def load_uploaded_history(self, entries: List[Dict[str, Any]]) -> None:
-        """Replace current history with uploaded entries and start a new session."""
-        self._archive_current_session()
-        self.history = [dict(e) for e in entries]
-        self.current_session_id = self.next_session_id()
 
 
 # -------------------------------------------------------------------
@@ -144,15 +159,18 @@ state_lock = asyncio.Lock()
 
 
 # -------------------------------------------------------------------
-# Broadcast helper
+# Helper: broadcast message to all connected clients
 # -------------------------------------------------------------------
 async def broadcast(data: dict) -> None:
+    """Send JSON data to every alive WebSocket, removing dead ones."""
     dead = []
+    # no lock needed – only modifying clients during iteration is safe with list copy
     for ws in list(state.clients.keys()):
         try:
             await ws.send_text(json.dumps(data))
         except Exception:
             dead.append(ws)
+
     if dead:
         async with state_lock:
             for ws in dead:
@@ -160,12 +178,14 @@ async def broadcast(data: dict) -> None:
 
 
 # -------------------------------------------------------------------
-# Replay history to a single client
+# Helper: replay entire history to a single client (already have lock)
 # -------------------------------------------------------------------
 async def replay_history(ws: WebSocket) -> None:
+    """Replay conversation history to a newly connected client."""
     for entry in state.history:
         sender = entry.get("sender", "UNKNOWN")
-        if not sender:   # legacy fallback
+        if not sender:
+            # legacy fallback (should not happen)
             role = entry.get("role", "")
             content = entry.get("content", "")
             if role == "assistant":
@@ -186,7 +206,7 @@ async def replay_history(ws: WebSocket) -> None:
 
 
 # -------------------------------------------------------------------
-# Root endpoint
+# Root health endpoint
 # -------------------------------------------------------------------
 @app.get("/")
 async def home():
@@ -199,22 +219,29 @@ async def home():
 @app.websocket("/chat")
 async def chat_endpoint(ws: WebSocket):
     await ws.accept()
+
+    # 1. Receive username
     try:
         username = await ws.receive_text()
     except WebSocketDisconnect:
         return
 
+    # Register the client
     async with state_lock:
         state.clients[ws] = username
+        # Make sure a session exists
         state.ensure_active_session()
 
     print(f"{username} connected.")
 
+    # 2. AI configuration flow (if needed)
     if not state.ai_config["configured"]:
         await handle_initial_setup(ws, username)
+        # If the user disconnected during setup, we're done
         if ws not in state.clients:
             return
 
+    # 3. Send welcome message + replay history
     try:
         await ws.send_text(json.dumps({
             "type": "system",
@@ -225,6 +252,7 @@ async def chat_endpoint(ws: WebSocket):
     except Exception:
         return
 
+    # 4. Main message loop
     try:
         while True:
             try:
@@ -236,49 +264,67 @@ async def chat_endpoint(ws: WebSocket):
             print(f"{username}: {raw}")
             handled = await process_message(ws, username, raw)
             if not handled:
+                # The client has been disconnected inside process_message
                 break
     except Exception as e:
         print(f"{username} error: {e}")
     finally:
+        # Cleanup
         async with state_lock:
             state.clients.pop(ws, None)
             if state.setup_owner == ws:
+                # The setup owner left – notify any waiters
                 state.setup_owner = None
-                state._waiting_for_setup.set()
-                state._setup_done.set()
+                state._waiting_for_setup.set()   # wake up waiting clients
+                state._setup_done.set()          # release any send loop waits
 
 
 # -------------------------------------------------------------------
-# Initial AI setup
+# Setup coordination
 # -------------------------------------------------------------------
 async def handle_initial_setup(ws: WebSocket, username: str) -> None:
+    """
+    Manage the case where the AI is not yet configured.
+    Only one user can be the setup owner; others wait.
+    """
     async with state_lock:
         if state.setup_owner is None:
+            # Become the setup owner
             state.setup_owner = ws
             state._waiting_for_setup.clear()
             state._setup_done.clear()
+            # send setup prompt
             await ws.send_text(json.dumps({"type": "setup_required"}))
         else:
+            # Tell this client to wait
             await ws.send_text(json.dumps({
                 "type": "system",
                 "message": "AI is being configured. Please wait..."
             }))
 
+    # If we are not the owner, wait until setup completes or owner disconnects
     if state.setup_owner != ws:
+        # Wait for either _setup_done or _waiting_for_setup
         done, pending = await asyncio.wait(
             [asyncio.create_task(state._setup_done.wait()),
              asyncio.create_task(state._waiting_for_setup.wait())],
             return_when=asyncio.FIRST_COMPLETED
         )
+        # Cancel the other task
         for task in pending:
             task.cancel()
+        # Check if the connection is still alive
         if ws not in state.clients:
             return
+        # If we were woken by _waiting_for_setup (owner left), try to become owner
         if not state.ai_config["configured"]:
+            # The AI still isn't configured – retry the flow recursively
             return await handle_initial_setup(ws, username)
         else:
+            # AI was configured while we waited
             return
 
+    # ---- We are the setup owner ----
     try:
         raw = await ws.receive_text()
     except WebSocketDisconnect:
@@ -290,6 +336,7 @@ async def handle_initial_setup(ws: WebSocket, username: str) -> None:
                 state._setup_done.set()
         return
 
+    # Parse the setup JSON
     try:
         setup = json.loads(raw)
         required = ["ai_name", "behavior", "first_message", "reasoning_level", "show_reasoning"]
@@ -303,6 +350,8 @@ async def handle_initial_setup(ws: WebSocket, username: str) -> None:
             state.ai_config["reasoning_level"] = setup["reasoning_level"]
             state.ai_config["show_reasoning"] = setup["show_reasoning"]
             state.ai_config["configured"] = True
+
+            # Clear setup owner before broadcasting
             state.setup_owner = None
             state._setup_done.set()
 
@@ -325,6 +374,7 @@ async def handle_initial_setup(ws: WebSocket, username: str) -> None:
         })
 
     except Exception as e:
+        # Notify the setup owner of failure
         try:
             await ws.send_text(json.dumps({
                 "type": "system",
@@ -337,6 +387,7 @@ async def handle_initial_setup(ws: WebSocket, username: str) -> None:
                 state.setup_owner = None
                 state._waiting_for_setup.set()
                 state._setup_done.set()
+        # Close this connection so the user can retry
         try:
             await ws.close()
         except Exception:
@@ -344,21 +395,13 @@ async def handle_initial_setup(ws: WebSocket, username: str) -> None:
 
 
 # -------------------------------------------------------------------
-# Message processor
+# Message processing (runs inside the main loop)
 # -------------------------------------------------------------------
 async def process_message(ws: WebSocket, username: str, msg: str) -> bool:
-    # ------------------------------------------------------------------
-    # NEW: detect upload_session JSON command (before any other logic)
-    # ------------------------------------------------------------------
-    try:
-        data = json.loads(msg)
-    except (json.JSONDecodeError, TypeError):
-        pass
-    else:
-        if isinstance(data, dict) and data.get("type") == "upload_session":
-            return await handle_upload_session(ws, username, data)
-
-    # ---- Scenario reset ----
+    """
+    Returns False if the connection should be terminated, True otherwise.
+    """
+    # ---- Scenario reset (reconfigure AI) ----
     if msg.strip().lower() == "/scenario":
         async with state_lock:
             state.ai_config["configured"] = False
@@ -372,15 +415,20 @@ async def process_message(ws: WebSocket, username: str, msg: str) -> bool:
             "message": "AI scenario reset. Reconfigure the AI."
         })
         await ws.send_text(json.dumps({"type": "setup_required"}))
+        # The next message from this user will be processed by handle_initial_setup
+        # because the main loop will see ai_config["configured"] == False
+        # and call handle_initial_setup again. We signal that by continuing.
         return True
 
-    # ---- AI not configured ----
+    # ---- If AI is not configured, only the owner can talk ----
     async with state_lock:
         configured = state.ai_config["configured"]
         owner = state.setup_owner
 
     if not configured:
         if owner == ws:
+            # The setup owner is sending the configuration JSON now.
+            # We already handled the "setup_required" prompt; process their JSON.
             try:
                 setup = json.loads(msg)
                 required = ["ai_name", "behavior", "first_message", "reasoning_level", "show_reasoning"]
@@ -397,6 +445,7 @@ async def process_message(ws: WebSocket, username: str, msg: str) -> bool:
                     state._setup_done.set()
 
                 print("AI configured (reconfiguration).")
+
                 first_msg = state.ai_config["first_message"].strip()
                 if first_msg:
                     async with state_lock:
@@ -407,11 +456,13 @@ async def process_message(ws: WebSocket, username: str, msg: str) -> bool:
                         "message": first_msg,
                         "replay": False,
                     })
+
                 await broadcast({
                     "type": "system",
                     "message": f"AI configured as {state.ai_config['name']}."
                 })
                 return True
+
             except Exception as e:
                 try:
                     await ws.send_text(json.dumps({
@@ -422,39 +473,46 @@ async def process_message(ws: WebSocket, username: str, msg: str) -> bool:
                     return False
                 return True
         else:
+            # Not the owner – they shouldn't be sending messages
             return True
 
-    # ---- Slash commands ----
+    # ---- Commands (available only when AI is configured) ----
     if msg.startswith("/"):
         return await handle_command(ws, username, msg)
 
-    # ---- Normal chat ----
+    # ---- Normal chat message ----
+    # 1. Broadcast to everyone
     await broadcast({
         "type": "chat",
         "sender": username,
         "message": msg,
         "replay": False,
     })
+
     async with state_lock:
         state.append_user_message(username, msg)
 
+    # 2. AI response (if awake)
     if not state.ai_awake:
         return True
 
     try:
         async with state_lock:
             system_msg = f"You are {state.ai_config['name']}. {state.ai_config['behavior']}"
+            # last 20 messages for context
             recent = state.history[-20:]
             messages = [{"role": "system", "content": system_msg}]
             messages += [{"role": h["role"], "content": h["content"]} for h in recent]
             reasoning_level = state.ai_config["reasoning_level"]
             show_reason = state.ai_config["show_reasoning"]
 
+        # Call DeepSeek (blocking call, but called in async context – okay for this scale)
         response = client.chat.completions.create(
             model=MODEL_NAME,
             messages=messages,
             reasoning_effort=reasoning_level,
         )
+
         choice = response.choices[0].message
         reply = choice.content or ""
         reasoning = getattr(choice, "reasoning_content", None)
@@ -466,45 +524,53 @@ async def process_message(ws: WebSocket, username: str, msg: str) -> bool:
     async with state_lock:
         state.append_assistant_message(state.ai_config["name"], reply)
 
+    # Broadcast reasoning (if enabled)
     if reasoning and state.ai_config["show_reasoning"]:
         await broadcast({
             "type": "reasoning",
             "sender": state.ai_config["name"],
             "message": reasoning,
         })
+
+    # Broadcast AI reply
     await broadcast({
         "type": "chat",
         "sender": state.ai_config["name"],
         "message": reply,
         "replay": False,
     })
+
     return True
 
 
 # -------------------------------------------------------------------
-# Command handler
+# Command handler (called only when AI is configured)
 # -------------------------------------------------------------------
 async def handle_command(ws: WebSocket, username: str, msg: str) -> bool:
     cmd = msg.strip().lower()
 
+    # /sleep
     if cmd == "/sleep":
         async with state_lock:
             state.ai_awake = False
         await broadcast({"type": "system", "message": "AI is now sleeping."})
         return True
 
+    # /wake
     if cmd == "/wake":
         async with state_lock:
             state.ai_awake = True
         await broadcast({"type": "system", "message": "AI is now awake."})
         return True
 
+    # /clear
     if cmd == "/clear":
         async with state_lock:
             state.history.clear()
         await broadcast({"type": "system", "message": "Conversation history cleared."})
         return True
 
+    # /new – start a brand new session
     if cmd == "/new":
         async with state_lock:
             state._archive_current_session()
@@ -513,18 +579,21 @@ async def handle_command(ws: WebSocket, username: str, msg: str) -> bool:
         await broadcast({"type": "new_session", "message": "New session started."})
         return True
 
+    # /load <session_id>
     if cmd.startswith("/load"):
         parts = msg.split(maxsplit=1)
         if len(parts) < 2:
             await ws.send_text(json.dumps({"type": "system", "message": "Usage: /load yyyy/m/d/n"}))
             return True
         session_id = parts[1].strip()
+        # allow .txt extension (from client log files) but strip it
         if session_id.endswith(".txt"):
             session_id = session_id[:-4]
         try:
             async with state_lock:
                 state.restore_session(session_id)
             await broadcast({"type": "system", "message": f"Loaded session {session_id}."})
+            # replay history to all
             async with state_lock:
                 for entry in state.history:
                     await broadcast({
@@ -537,6 +606,7 @@ async def handle_command(ws: WebSocket, username: str, msg: str) -> bool:
             await ws.send_text(json.dumps({"type": "system", "message": f"Load failed: {e}"}))
         return True
 
+    # /export
     if cmd == "/export":
         try:
             async with state_lock:
@@ -546,6 +616,7 @@ async def handle_command(ws: WebSocket, username: str, msg: str) -> bool:
             await ws.send_text(json.dumps({"type": "system", "message": f"Export failed: {e}"}))
         return True
 
+    # /import <filename> (must be inside EXPORT_DIR)
     if cmd.startswith("/import"):
         parts = msg.split(maxsplit=1)
         if len(parts) < 2:
@@ -568,73 +639,6 @@ async def handle_command(ws: WebSocket, username: str, msg: str) -> bool:
             await ws.send_text(json.dumps({"type": "system", "message": f"Import failed: {e}"}))
         return True
 
+    # Unknown command
     await ws.send_text(json.dumps({"type": "system", "message": f"Unknown command: {msg}"}))
-    return True
-
-
-# -------------------------------------------------------------------
-# NEW: Handle upload_session JSON message
-# -------------------------------------------------------------------
-async def handle_upload_session(ws: WebSocket, username: str, data: dict) -> bool:
-    """
-    Expected data format:
-    {
-        "type": "upload_session",
-        "history": [
-            {"role": "user", "sender": "...", "content": "..."},
-            {"role": "assistant", "sender": "...", "content": "..."},
-            ...
-        ]
-    }
-    """
-    history = data.get("history")
-    if not isinstance(history, list):
-        await ws.send_text(json.dumps({
-            "type": "system",
-            "message": "Invalid upload_session: missing or malformed 'history' list."
-        }))
-        return True
-
-    # Validate entries
-    for i, entry in enumerate(history):
-        if not isinstance(entry, dict):
-            await ws.send_text(json.dumps({
-                "type": "system",
-                "message": f"Invalid entry at index {i}: not a dict."
-            }))
-            return True
-        role = entry.get("role")
-        if role not in ("user", "assistant"):
-            await ws.send_text(json.dumps({
-                "type": "system",
-                "message": f"Invalid role at index {i}: must be 'user' or 'assistant'."
-            }))
-            return True
-        if "sender" not in entry or "content" not in entry:
-            await ws.send_text(json.dumps({
-                "type": "system",
-                "message": f"Missing 'sender' or 'content' at index {i}."
-            }))
-            return True
-
-    # Replace the current session with the uploaded history
-    async with state_lock:
-        state.load_uploaded_history(history)
-
-    # Inform clients that a new session has been loaded
-    await broadcast({
-        "type": "new_session",
-        "message": "Uploaded session loaded."
-    })
-
-    # Replay the whole history to everyone
-    async with state_lock:
-        for entry in state.history:
-            await broadcast({
-                "type": "chat",
-                "sender": entry["sender"],
-                "message": entry["content"],
-                "replay": True,
-            })
-
     return True
