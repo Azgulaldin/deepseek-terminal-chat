@@ -83,10 +83,10 @@ def load_ai_persona() -> tuple[str, str, str, str, bool]:
 
 
 # -------------------------------------------------------------------
-# Session logging
+# Session logging (flat structure: sessions/YYYY-MM-DD_N.txt)
 # -------------------------------------------------------------------
 class SessionLogger:
-    """Writes a transcript of the session to a timestamped file."""
+    """Writes a transcript of the session to a flat file inside sessions/."""
 
     def __init__(self, username: str, persona: str) -> None:
         self.username = username
@@ -94,19 +94,27 @@ class SessionLogger:
         self.file_path: Optional[Path] = None
 
     def start(self) -> Path:
-        """Create and open a new session log file."""
-        today = datetime.now()
-        session_dir = SESSION_ROOT / f"{today.year}" / f"{today.month}" / f"{today.day}"
-        session_dir.mkdir(parents=True, exist_ok=True)
+        """Create and open a new session log file in sessions/."""
+        session_dir = SESSION_ROOT   # BASE_DIR / "sessions"
+        session_dir.mkdir(exist_ok=True)
 
-        # Find next session number for the day
+        today = datetime.now().strftime("%Y-%m-%d")   # "2026-05-29"
+
+        # Find next session number for today
         existing_numbers = []
-        for p in session_dir.glob("*.txt"):
-            if p.stem.isdigit():
-                existing_numbers.append(int(p.stem))
+        for p in session_dir.glob(f"{today}_*.txt"):
+            # Extract the number between underscore and .txt
+            stem = p.stem               # e.g. "2026-05-29_3"
+            try:
+                num_part = stem.split("_")[-1]
+                existing_numbers.append(int(num_part))
+            except ValueError:
+                pass
         next_number = max(existing_numbers, default=0) + 1
 
-        self.file_path = session_dir / f"{next_number}.txt"
+        filename = f"{today}_{next_number}.txt"
+        self.file_path = session_dir / filename
+
         with open(self.file_path, "w", encoding="utf-8") as f:
             f.write(f"Session started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write(f"Username: {self.username}\n")
