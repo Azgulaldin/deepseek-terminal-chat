@@ -1,592 +1,371 @@
+# client.py – DeepSeek roleplay terminal client
+# ------------------------------------------------------------------
+# Connects to the WebSocket server, handles persona setup,
+# AI configuration, real‑time chat, and local session logging.
+#
+# Rewrite focuses on:
+#   - Removing masking input (used getpass incorrectly)
+#   - Eliminating duplicate‑message workarounds
+#   - Clearer async flow
+#   - Robust error handling
+# ------------------------------------------------------------------
+
 import asyncio
 import json
-import websockets
 import os
-import getpass
-from pathlib import Path
+import sys
 from datetime import datetime
+from pathlib import Path
+from typing import Optional
 
+import websockets
+
+# -------------------------------------------------------------------
+# Configuration
+# -------------------------------------------------------------------
 SERVER_URL = "wss://deepseek-terminal-chat-production-78d3.up.railway.app/chat"
 
-WIDTH = 90
-
-PERSONA_FILE = "persona.txt"
-AI_PERSONA_FILE = "ai_persona.txt"
-
+# Local storage directories
 BASE_DIR = Path(__file__).resolve().parent
 SESSION_ROOT = BASE_DIR / "sessions"
+PERSONA_FILE = BASE_DIR / "persona.txt"
+AI_PERSONA_FILE = BASE_DIR / "ai_persona.txt"
 
-CURRENT_SESSION_FILE = None
-CURRENT_PERSONA = ""
-PENDING_FIRST_MESSAGE = None
+# Terminal display
+WIDTH = 90
 
 
-def line():
+def line() -> None:
+    """Print a horizontal divider."""
     print("=" * WIDTH)
 
 
-# =====================================================
-# SESSION LOGGING
-# =====================================================
-
-def create_session_file():
-    today = datetime.now()
-    session_dir = (
-        SESSION_ROOT
-        / f"{today.year}"
-        / f"{today.month}"
-        / f"{today.day}"
+# -------------------------------------------------------------------
+# Persona persistence
+# -------------------------------------------------------------------
+def save_persona(username: str, persona: str) -> None:
+    data = {"username": username, "persona": persona}
+    PERSONA_FILE.write_text(
+        json.dumps(data, indent=2, ensure_ascii=False),
+        encoding="utf-8"
     )
 
-    session_dir.mkdir(parents=True, exist_ok=True)
 
-    existing_numbers = []
-    for path in session_dir.glob("*.txt"):
-        if path.stem.isdigit():
-            existing_numbers.append(int(path.stem))
-
-    next_number = max(existing_numbers, default=0) + 1
-    return session_dir / f"{next_number}.txt"
+def load_persona() -> tuple[str, str]:
+    data = json.loads(PERSONA_FILE.read_text(encoding="utf-8"))
+    return data["username"], data["persona"]
 
 
-def start_session_log(username, persona):
-    global CURRENT_SESSION_FILE
-
-    CURRENT_SESSION_FILE = create_session_file()
-
-    with open(
-        CURRENT_SESSION_FILE,
-        "w",
-        encoding="utf-8"
-    ) as f:
-
-        f.write(
-            f"Session started: "
-            f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-        )
-        f.write(f"Username: {username}\n")
-        f.write(f"Persona: {persona}\n")
-        f.write("\n")
-
-
-def log_session(message):
-    if CURRENT_SESSION_FILE is None:
-        return
-
-    stamp = datetime.now().strftime("%H:%M:%S")
-
-    with open(
-        CURRENT_SESSION_FILE,
-        "a",
-        encoding="utf-8"
-    ) as f:
-
-        f.write(f"[{stamp}] {message}\n")
-
-
-def display_own_message(message):
-    line()
-    print(f"You: {message}".rjust(WIDTH))
-    line()
-    log_session(f"You: {message}")
-
-
-# =====================================================
-# SAVE PERSONA
-# =====================================================
-
-def save_persona(username, persona):
-
-    data = {
-        "username": username,
-        "persona": persona
-    }
-
-    with open(
-        PERSONA_FILE,
-        "w",
-        encoding="utf-8"
-    ) as f:
-
-        json.dump(
-            data,
-            f,
-            indent=2,
-            ensure_ascii=False
-        )
-
-
-# =====================================================
-# LOAD PERSONA
-# =====================================================
-
-def load_persona():
-
-    with open(
-        PERSONA_FILE,
-        "r",
-        encoding="utf-8"
-    ) as f:
-
-        data = json.load(f)
-
-    username = data["username"]
-    persona = data["persona"]
-
-    return username, persona
-
-
-# =====================================================
-# SAVE AI PERSONA
-# =====================================================
-
-def save_ai_persona(
-    ai_name,
-    behavior,
-    first_message,
-    reasoning_level,
-    show_reasoning
-):
-
+def save_ai_persona(ai_name: str, behavior: str, first_message: str,
+                    reasoning_level: str, show_reasoning: bool) -> None:
     data = {
         "ai_name": ai_name,
         "behavior": behavior,
         "first_message": first_message,
         "reasoning_level": reasoning_level,
-        "show_reasoning": show_reasoning
+        "show_reasoning": show_reasoning,
     }
-
-    with open(
-        AI_PERSONA_FILE,
-        "w",
+    AI_PERSONA_FILE.write_text(
+        json.dumps(data, indent=2, ensure_ascii=False),
         encoding="utf-8"
-    ) as f:
-
-        json.dump(
-            data,
-            f,
-            indent=2,
-            ensure_ascii=False
-        )
-
-
-# =====================================================
-# LOAD AI PERSONA
-# =====================================================
-
-def load_ai_persona():
-
-    with open(
-        AI_PERSONA_FILE,
-        "r",
-        encoding="utf-8"
-    ) as f:
-
-        data = json.load(f)
-
-    ai_name = data["ai_name"]
-    behavior = data["behavior"]
-    first_message = data["first_message"]
-    reasoning_level = data.get("reasoning_level", "medium")
-    show_reasoning = data.get("show_reasoning", False)
-
-    return (
-        ai_name,
-        behavior,
-        first_message,
-        reasoning_level,
-        show_reasoning
     )
 
 
-async def receive_messages(websocket, username, setup_done):
+def load_ai_persona() -> tuple[str, str, str, str, bool]:
+    data = json.loads(AI_PERSONA_FILE.read_text(encoding="utf-8"))
+    return (
+        data["ai_name"],
+        data["behavior"],
+        data["first_message"],
+        data.get("reasoning_level", "medium"),
+        data.get("show_reasoning", False),
+    )
 
-    global PENDING_FIRST_MESSAGE
 
+# -------------------------------------------------------------------
+# Session logging
+# -------------------------------------------------------------------
+class SessionLogger:
+    """Writes a transcript of the session to a timestamped file."""
+
+    def __init__(self, username: str, persona: str) -> None:
+        self.username = username
+        self.persona = persona
+        self.file_path: Optional[Path] = None
+
+    def start(self) -> Path:
+        """Create and open a new session log file."""
+        today = datetime.now()
+        session_dir = SESSION_ROOT / f"{today.year}" / f"{today.month}" / f"{today.day}"
+        session_dir.mkdir(parents=True, exist_ok=True)
+
+        # Find next session number for the day
+        existing_numbers = []
+        for p in session_dir.glob("*.txt"):
+            if p.stem.isdigit():
+                existing_numbers.append(int(p.stem))
+        next_number = max(existing_numbers, default=0) + 1
+
+        self.file_path = session_dir / f"{next_number}.txt"
+        with open(self.file_path, "w", encoding="utf-8") as f:
+            f.write(f"Session started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"Username: {self.username}\n")
+            f.write(f"Persona: {self.persona}\n\n")
+        return self.file_path
+
+    def write(self, entry: str) -> None:
+        """Append a line to the session log, timestamped."""
+        if self.file_path is None:
+            return
+        stamp = datetime.now().strftime("%H:%M:%S")
+        with open(self.file_path, "a", encoding="utf-8") as f:
+            f.write(f"[{stamp}] {entry}\n")
+
+    def log_system(self, message: str) -> None:
+        self.write(f"SYSTEM: {message}")
+
+    def log_chat(self, sender: str, message: str) -> None:
+        self.write(f"{sender}: {message}")
+
+    def log_reasoning(self, sender: str, reasoning: str) -> None:
+        self.write(f"[{sender} REASONING]\n{reasoning}")
+
+
+# -------------------------------------------------------------------
+# Terminal UI helpers
+# -------------------------------------------------------------------
+def display_chat(sender: str, message: str) -> None:
+    """Print a chat message from someone (AI or another user)."""
+    line()
+    if sender.upper() == sender:   # AI name is usually all caps
+        print(f"[{sender}]: {message}")
+    else:
+        print(f"[{sender}]: {message}")
+    line()
+
+
+def display_reasoning(sender: str, reasoning: str) -> None:
+    """Print the AI's internal reasoning (if shown)."""
+    line()
+    print(f"[{sender} REASONING]")
+    print()
+    print(reasoning)
+    line()
+
+
+def display_system(message: str) -> None:
+    """Print a system notification."""
+    line()
+    print(message)
+    line()
+
+
+# -------------------------------------------------------------------
+# WebSocket receive loop
+# -------------------------------------------------------------------
+async def receiver(websocket: websockets.WebSocketClientProtocol,
+                   username: str,
+                   setup_done: asyncio.Event,
+                   logger: SessionLogger) -> None:
+    """
+    Listen for messages from the server and display them.
+    Handles: chat, system, reasoning, new_session, scenario_reset,
+             setup_required, and silently ignores own messages.
+    """
     while True:
-
         try:
-
             raw = await websocket.recv()
-
-            data = json.loads(raw)
-
-            msg_type = data.get("type")
-
-            # ==========================================
-            # SYSTEM MESSAGE
-            # ==========================================
-
-            if msg_type == "system":
-
-                line()
-                print(data["message"])
-                line()
-
-                log_session(f"SYSTEM: {data['message']}")
-
-            # ==========================================
-            # CHAT MESSAGE
-            # ==========================================
-
-            elif msg_type == "chat":
-
-                sender = data["sender"]
-                message = data["message"]
-
-                # Skip our own server echo, since we print it locally once
-                if sender == username:
-                    continue
-
-                # Skip the one first-message copy we already printed locally
-                if (
-                    PENDING_FIRST_MESSAGE
-                    and sender == PENDING_FIRST_MESSAGE[0]
-                    and message == PENDING_FIRST_MESSAGE[1]
-                ):
-                    PENDING_FIRST_MESSAGE = None
-                    continue
-
-                line()
-
-                if sender.upper() == sender:
-
-                    print(f"[{sender}]: {message}")
-
-                else:
-
-                    print(f"[{sender}]: {message}")
-
-                line()
-
-                log_session(f"{sender}: {message}")
-
-            # ==========================================
-            # REASONING MESSAGE
-            # ==========================================
-
-            elif msg_type == "reasoning":
-
-                sender = data["sender"]
-                message = data["message"]
-
-                line()
-
-                print(
-                    f"[{sender} REASONING]"
-                )
-
-                print()
-
-                print(message)
-
-                line()
-
-                log_session(f"[{sender} REASONING]\n{message}")
-
-            # ==========================================
-            # SCENARIO RESET
-            # ==========================================
-
-            elif msg_type == "scenario_reset":
-
-                setup_done.clear()
-
-                line()
-                print(data["message"])
-                line()
-
-                log_session(f"SYSTEM: {data['message']}")
-
-                PENDING_FIRST_MESSAGE = None
-
-            # ==========================================
-            # NEW SESSION
-            # ==========================================
-
-            elif msg_type == "new_session":
-
-                line()
-                print(data["message"])
-                line()
-
-                log_session(f"SYSTEM: {data['message']}")
-
-                start_session_log(username, CURRENT_PERSONA)
-
-                PENDING_FIRST_MESSAGE = None
-
-            # ==========================================
-            # SETUP REQUIRED
-            # ==========================================
-
-            elif msg_type == "setup_required":
-
-                line()
-
-                print(
-                    "You are the first user."
-                )
-
-                print(
-                    "Configure the AI."
-                )
-
-                line()
-
-                reconfigure_ai = input(
-                    "Reconfigure AI persona? (y/n): "
-                ).strip().lower()
-
-                line()
-
-                if (
-                    reconfigure_ai == "y"
-                    or not os.path.exists(
-                        AI_PERSONA_FILE
-                    )
-                ):
-
-                    ai_name = input(
-                        "AI Name: "
-                    ).strip()
-
-                    behavior = input(
-                        "AI Behavior: "
-                    ).strip()
-
-                    first_message = input(
-                        "First Message: "
-                    ).strip()
-
-                    print(
-                        "\nReasoning Intensity:"
-                    )
-
-                    print("1. easy")
-                    print("2. medium")
-                    print("3. high")
-
-                    choice = input(
-                        "\nChoose option: "
-                    ).strip()
-
-                    mapping = {
-                        "1": "low",
-                        "2": "medium",
-                        "3": "high"
-                    }
-
-                    reasoning_level = mapping.get(
-                        choice,
-                        "medium"
-                    )
-
-                    show_reasoning = (
-                        input(
-                            "\nShow reasoning? (y/n): "
-                        )
-                        .strip()
-                        .lower()
-                        == "y"
-                    )
-
-                    save_ai_persona(
-                        ai_name,
-                        behavior,
-                        first_message,
-                        reasoning_level,
-                        show_reasoning
-                    )
-
-                    line()
-
-                    print(
-                        "AI persona saved locally."
-                    )
-
-                    line()
-
-                else:
-
-                    (
-                        ai_name,
-                        behavior,
-                        first_message,
-                        reasoning_level,
-                        show_reasoning
-                    ) = load_ai_persona()
-
-                    line()
-
-                    print(
-                        "Loaded saved AI persona."
-                    )
-
-                    print(
-                        f"AI Name: {ai_name}"
-                    )
-
-                    line()
-
-                setup_data = {
-                    "ai_name": ai_name,
-                    "behavior": behavior,
-                    "first_message": first_message,
-                    "reasoning_level":
-                        reasoning_level,
-                    "show_reasoning":
-                        show_reasoning
-                }
-
-                await websocket.send(
-                    json.dumps(setup_data)
-                )
-
-                line()
-
-                print("AI configured.")
-
-                line()
-
-                log_session("AI CONFIGURED")
-                log_session(f"AI Name: {ai_name}")
-                log_session(f"Behavior: {behavior}")
-                log_session(f"First Message: {first_message}")
-                log_session(f"Reasoning Level: {reasoning_level}")
-                log_session(f"Show Reasoning: {show_reasoning}")
-
-                # Show the AI's first message locally once setup is complete
-                if first_message.strip():
-
-                    PENDING_FIRST_MESSAGE = (ai_name, first_message)
-
-                    line()
-                    print(f"[{ai_name}]: {first_message}")
-                    line()
-
-                    log_session(f"{ai_name}: {first_message}")
-
-                setup_done.set()
-
+        except websockets.ConnectionClosed as e:
+            print(f"\nDisconnected: {e}")
+            break
         except Exception as e:
-
-            print(
-                f"\nDisconnected: {e}"
-            )
-
+            print(f"\nUnexpected receive error: {e}")
             break
 
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
 
-async def send_messages(websocket, setup_done):
+        msg_type = data.get("type")
 
+        # ---- System message ----
+        if msg_type == "system":
+            display_system(data["message"])
+            logger.log_system(data["message"])
+
+        # ---- New session ----
+        elif msg_type == "new_session":
+            display_system(data["message"])
+            logger.log_system(data["message"])
+            logger.start()   # start a fresh log file
+
+        # ---- Scenario reset ----
+        elif msg_type == "scenario_reset":
+            display_system(data["message"])
+            logger.log_system(data["message"])
+            # Prepare to reconfigure AI; clear the setup event so
+            # the sender loop waits until setup is done again.
+            setup_done.clear()
+
+        # ---- Setup required (only the first user gets this) ----
+        elif msg_type == "setup_required":
+            # This client has been chosen to configure the AI.
+            await handle_ai_setup(websocket, logger)
+            setup_done.set()   # now the send loop can start
+
+        # ---- Chat message ----
+        elif msg_type == "chat":
+            sender = data["sender"]
+            message = data["message"]
+            # Skip our own messages – we don't want a local echo
+            if sender == username:
+                continue
+            display_chat(sender, message)
+            logger.log_chat(sender, message)
+
+        # ---- Reasoning ----
+        elif msg_type == "reasoning":
+            sender = data["sender"]
+            reasoning = data["message"]
+            display_reasoning(sender, reasoning)
+            logger.log_reasoning(sender, reasoning)
+
+        # (Unknown types are silently ignored)
+
+
+# -------------------------------------------------------------------
+# AI setup flow (when server sends "setup_required")
+# -------------------------------------------------------------------
+async def handle_ai_setup(websocket: websockets.WebSocketClientProtocol,
+                          logger: SessionLogger) -> None:
+    """
+    Prompt the local user for AI persona settings, then send them to the server.
+    This runs inside the receiver loop but blocks until configuration is sent.
+    """
+    print("\nYou are the first user. Configure the AI.\n")
+
+    # Offer to reload saved AI persona
+    reconfigure = input("Reconfigure AI persona? (y/n): ").strip().lower()
+    if reconfigure == "y" or not AI_PERSONA_FILE.exists():
+        ai_name = input("AI Name: ").strip()
+        behavior = input("AI Behavior: ").strip()
+        first_message = input("First Message: ").strip()
+        print("\nReasoning Intensity:")
+        print("1. easy")
+        print("2. medium")
+        print("3. high")
+        choice = input("\nChoose option: ").strip()
+        mapping = {"1": "low", "2": "medium", "3": "high"}
+        reasoning_level = mapping.get(choice, "medium")
+        show_reasoning = input("\nShow reasoning? (y/n): ").strip().lower() == "y"
+        save_ai_persona(ai_name, behavior, first_message, reasoning_level, show_reasoning)
+        print("\nAI persona saved locally.")
+    else:
+        ai_name, behavior, first_message, reasoning_level, show_reasoning = load_ai_persona()
+        print(f"\nLoaded saved AI persona: {ai_name}")
+
+    # Send configuration to server
+    setup_data = {
+        "ai_name": ai_name,
+        "behavior": behavior,
+        "first_message": first_message,
+        "reasoning_level": reasoning_level,
+        "show_reasoning": show_reasoning,
+    }
+    await websocket.send(json.dumps(setup_data))
+
+    # Log setup details
+    logger.log_system("AI CONFIGURED")
+    logger.write(f"AI Name: {ai_name}")
+    logger.write(f"Behavior: {behavior}")
+    logger.write(f"First Message: {first_message}")
+    logger.write(f"Reasoning Level: {reasoning_level}")
+    logger.write(f"Show Reasoning: {show_reasoning}")
+
+    print("\nAI configured.\n")
+
+
+# -------------------------------------------------------------------
+# WebSocket send loop
+# -------------------------------------------------------------------
+async def sender(websocket: websockets.WebSocketClientProtocol,
+                 setup_done: asyncio.Event) -> None:
+    """
+    Wait until AI setup is complete (if needed), then read user input
+    line by line and send it to the server.
+    """
+    await setup_done.wait()
+
+    # Use a simple input() prompt – no password masking.
+    # We use asyncio.to_thread to avoid blocking the event loop.
+    loop = asyncio.get_running_loop()
     while True:
+        # Wait for the event to remain set (it may be cleared again if /scenario resets the AI)
+        if not setup_done.is_set():
+            await setup_done.wait()
 
-        await setup_done.wait()
-
-        msg = await asyncio.to_thread(
-            getpass.getpass,
-            "> "
-        )
-
+        # Read from stdin in a thread
+        msg = await loop.run_in_executor(None, input, "> ")
+        msg = msg.strip()
         if not msg:
             continue
 
-        if not setup_done.is_set():
-            continue
+        # Send to server
+        try:
+            await websocket.send(msg)
+        except websockets.ConnectionClosed:
+            break
 
-        display_own_message(msg)
 
-        await websocket.send(msg)
-
-
-async def main():
-
-    global CURRENT_PERSONA
-
+# -------------------------------------------------------------------
+# Main entry point
+# -------------------------------------------------------------------
+async def main() -> None:
     line()
-
-    reconfigure = input(
-        "Reconfigure persona? (y/n): "
-    ).strip().lower()
-
-    line()
-
-    if (
-        reconfigure == "y"
-        or not os.path.exists(PERSONA_FILE)
-    ):
-
-        username = input(
-            "Enter username: "
-        ).strip()
-
-        persona = input(
-            "Enter persona: "
-        ).strip()
-
-        save_persona(
-            username,
-            persona
-        )
-
-        line()
-
-        print(
-            "Persona saved locally."
-        )
-
-        line()
-
-    else:
-
+    # ---- User persona ----
+    if PERSONA_FILE.exists():
         username, persona = load_persona()
+        print(f"Loaded saved persona: {username}")
+    else:
+        username = input("Enter username: ").strip()
+        persona = input("Enter persona: ").strip()
+        save_persona(username, persona)
+        print("Persona saved locally.")
+    line()
 
-        line()
+    logger = SessionLogger(username, persona)
+    logger.start()
 
-        print(
-            "Loaded saved persona."
-        )
+    # ---- Connect to server ----
+    try:
+        websocket = await websockets.connect(SERVER_URL)
+    except Exception as e:
+        print(f"Failed to connect: {e}")
+        sys.exit(1)
 
-        print(
-            f"Username: {username}"
-        )
+    # Send username immediately (per protocol)
+    await websocket.send(username)
+    logger.log_system(f"CONNECTED AS {username}")
+    print(f"Connected as {username}\n")
 
-        line()
-
-    CURRENT_PERSONA = persona
-    start_session_log(username, persona)
-
+    # This event is set when AI is configured (or if no setup is needed).
+    # Initially we must check if the server requires setup; the receiver
+    # will clear it if a setup_required or scenario_reset arrives.
     setup_done = asyncio.Event()
+    # If the server's AI is already configured, the receiver won't clear it.
+    # We set it preemptively; the receiver will clear if needed.
+    setup_done.set()
 
-    async with websockets.connect(
-        SERVER_URL
-    ) as websocket:
-
-        # send username first
-        await websocket.send(username)
-
-        line()
-
-        print(
-            f"Connected as {username}"
-        )
-
-        line()
-
-        log_session(f"CONNECTED AS {username}")
-
-        await asyncio.gather(
-            receive_messages(
-                websocket,
-                username,
-                setup_done
-            ),
-            send_messages(
-                websocket,
-                setup_done
-            )
-        )
+    # Run receiver and sender concurrently
+    await asyncio.gather(
+        receiver(websocket, username, setup_done, logger),
+        sender(websocket, setup_done),
+    )
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\nExiting.")
