@@ -1,18 +1,47 @@
-# client.py – DeepSeek roleplay terminal client
-# ------------------------------------------------------------------
-# Connects to the WebSocket server, handles persona setup,
-# AI configuration, real‑time chat, local session logging,
-# and now: /upload <filename> to restore a session from a local log.
-# ------------------------------------------------------------------
+# client.py – Local web server + WebSocket relay for the DeepSeek roleplay app
+# ---------------------------------------------------------------------------
+# Double‑click to start. It will:
+#   • Auto‑install missing Python packages (aiohttp, websockets)
+#   • Start a local HTTP server on an available port
+#   • Open your browser to the UI
+#   • Relay all messages between the browser and the remote server
+#   • Log all chats to local session files
+#   • Support /upload from the UI
+# ---------------------------------------------------------------------------
 
 import asyncio
 import json
 import os
 import sys
+import subprocess
+import webbrowser
+import socket
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, List, Dict
+from typing import Optional, Dict, Any
 
+# -------------------------------------------------------------------
+# Auto‑install required packages
+# -------------------------------------------------------------------
+REQUIRED_PACKAGES = ["aiohttp", "websockets"]
+
+def install_packages():
+    missing = []
+    for pkg in REQUIRED_PACKAGES:
+        try:
+            __import__(pkg)
+        except ImportError:
+            missing.append(pkg)
+    if missing:
+        print(f"Installing missing packages: {', '.join(missing)}")
+        # Use the same Python interpreter that's running this script
+        subprocess.check_call([sys.executable, "-m", "pip", "install"] + missing)
+
+install_packages()
+
+import aiohttp
+from aiohttp import web
+import aiohttp.web_runner
 import websockets
 
 # -------------------------------------------------------------------
@@ -20,65 +49,18 @@ import websockets
 # -------------------------------------------------------------------
 SERVER_URL = "wss://deepseek-terminal-chat-production-78d3.up.railway.app/chat"
 
-# Local storage directories
+# Local directories (everything inside the folder where client.py lives)
 BASE_DIR = Path(__file__).resolve().parent
-SESSION_ROOT = BASE_DIR / "sessions"
-PERSONA_FILE = BASE_DIR / "persona.txt"
-AI_PERSONA_FILE = BASE_DIR / "ai_persona.txt"
+STATIC_DIR = BASE_DIR / "static"            # HTML/CSS/JS frontend
+SESSION_ROOT = BASE_DIR / "sessions"        # local chat logs
+PERSONA_FILE = BASE_DIR / "user_config.json"  # stores username, persona, password (if remembered)
 
-# Terminal display
-WIDTH = 90
-
-
-def line() -> None:
-    """Print a horizontal divider."""
-    print("=" * WIDTH)
-
+# Create essential directories
+STATIC_DIR.mkdir(exist_ok=True)
+SESSION_ROOT.mkdir(exist_ok=True)
 
 # -------------------------------------------------------------------
-# Persona persistence
-# -------------------------------------------------------------------
-def save_persona(username: str, persona: str) -> None:
-    data = {"username": username, "persona": persona}
-    PERSONA_FILE.write_text(
-        json.dumps(data, indent=2, ensure_ascii=False),
-        encoding="utf-8"
-    )
-
-
-def load_persona() -> tuple[str, str]:
-    data = json.loads(PERSONA_FILE.read_text(encoding="utf-8"))
-    return data["username"], data["persona"]
-
-
-def save_ai_persona(ai_name: str, behavior: str, first_message: str,
-                    reasoning_level: str, show_reasoning: bool) -> None:
-    data = {
-        "ai_name": ai_name,
-        "behavior": behavior,
-        "first_message": first_message,
-        "reasoning_level": reasoning_level,
-        "show_reasoning": show_reasoning,
-    }
-    AI_PERSONA_FILE.write_text(
-        json.dumps(data, indent=2, ensure_ascii=False),
-        encoding="utf-8"
-    )
-
-
-def load_ai_persona() -> tuple[str, str, str, str, bool]:
-    data = json.loads(AI_PERSONA_FILE.read_text(encoding="utf-8"))
-    return (
-        data["ai_name"],
-        data["behavior"],
-        data["first_message"],
-        data.get("reasoning_level", "medium"),
-        data.get("show_reasoning", False),
-    )
-
-
-# -------------------------------------------------------------------
-# Session logging (flat structure: sessions/YYYY-MM-DD_N.txt)
+# Session logging (identical to the old terminal client)
 # -------------------------------------------------------------------
 class SessionLogger:
     """Writes a transcript of the session to a flat file inside sessions/."""
@@ -89,26 +71,20 @@ class SessionLogger:
         self.file_path: Optional[Path] = None
 
     def start(self) -> Path:
-        """Create and open a new session log file in sessions/."""
-        session_dir = SESSION_ROOT   # BASE_DIR / "sessions"
-        session_dir.mkdir(exist_ok=True)
-
-        today = datetime.now().strftime("%Y-%m-%d")   # "2026-05-29"
-
+        session_dir = SESSION_ROOT
+        today = datetime.now().strftime("%Y-%m-%d")
         # Find next session number for today
         existing_numbers = []
         for p in session_dir.glob(f"{today}_*.txt"):
-            stem = p.stem               # e.g. "2026-05-29_3"
+            stem = p.stem
             try:
                 num_part = stem.split("_")[-1]
                 existing_numbers.append(int(num_part))
             except ValueError:
                 pass
         next_number = max(existing_numbers, default=0) + 1
-
         filename = f"{today}_{next_number}.txt"
         self.file_path = session_dir / filename
-
         with open(self.file_path, "w", encoding="utf-8") as f:
             f.write(f"Session started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write(f"Username: {self.username}\n")
@@ -116,7 +92,6 @@ class SessionLogger:
         return self.file_path
 
     def write(self, entry: str) -> None:
-        """Append a line to the session log, timestamped."""
         if self.file_path is None:
             return
         stamp = datetime.now().strftime("%H:%M:%S")
@@ -132,56 +107,65 @@ class SessionLogger:
     def log_reasoning(self, sender: str, reasoning: str) -> None:
         self.write(f"[{sender} REASONING]\n{reasoning}")
 
+# -------------------------------------------------------------------
+# Load / save local user config (username, persona)
+# -------------------------------------------------------------------
+def load_user_config() -> dict:
+    if PERSONA_FILE.exists():
+        try:
+            return json.loads(PERSONA_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return {}
+
+def save_user_config(config: dict) -> None:
+    PERSONA_FILE.write_text(json.dumps(config, indent=2, ensure_ascii=False), encoding="utf-8")
 
 # -------------------------------------------------------------------
-# Terminal UI helpers
+# Global state for the relay
 # -------------------------------------------------------------------
-def display_chat(sender: str, message: str) -> None:
-    """Print a chat message from someone (AI or another user)."""
-    line()
-    if sender.upper() == sender:   # AI name is usually all caps
-        print(f"[{sender}]: {message}")
-    else:
-        print(f"[{sender}]: {message}")
-    line()
+class RelayState:
+    def __init__(self):
+        self.remote_ws: Optional[websockets.WebSocketClientProtocol] = None
+        self.local_clients: Dict[aiohttp.web.WebSocketResponse, str] = {}  # local ws -> username
+        self.logger: Optional[SessionLogger] = None
+        self.loop = asyncio.get_event_loop()
+        self.receiver_task: Optional[asyncio.Task] = None
+        self.pending_upload: Dict[str, Any] = {}
 
-
-def display_reasoning(sender: str, reasoning: str) -> None:
-    """Print the AI's internal reasoning (if shown)."""
-    line()
-    print(f"[{sender} REASONING]")
-    print()
-    print(reasoning)
-    line()
-
-
-def display_system(message: str) -> None:
-    """Print a system notification."""
-    line()
-    print(message)
-    line()
-
+state = RelayState()
 
 # -------------------------------------------------------------------
-# WebSocket receive loop
+# Helper: find a free TCP port
 # -------------------------------------------------------------------
-async def receiver(websocket: websockets.WebSocketClientProtocol,
-                   username: str,
-                   setup_done: asyncio.Event,
-                   logger: SessionLogger) -> None:
-    """
-    Listen for messages from the server and display them.
-    Handles: chat, system, reasoning, new_session, scenario_reset,
-             setup_required, and silently ignores own messages.
-    """
+def find_free_port():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(('', 0))
+        return s.getsockname()[1]
+
+# -------------------------------------------------------------------
+# Remote WebSocket receiver (from Railway to all local browsers)
+# -------------------------------------------------------------------
+async def remote_receiver():
+    """Receive messages from the remote server and broadcast to all local browsers."""
     while True:
         try:
-            raw = await websocket.recv()
+            raw = await state.remote_ws.recv()
         except websockets.ConnectionClosed as e:
-            print(f"\nDisconnected: {e}")
-            break
+            print(f"Remote connection closed: {e}")
+            # Notify local browsers and attempt reconnect
+            for ws in list(state.local_clients.keys()):
+                try:
+                    await ws.send_json({"type": "system", "message": "Disconnected from server. Reconnecting..."})
+                except:
+                    pass
+            # Try to reconnect after a delay
+            await asyncio.sleep(5)
+            if not await reconnect_remote():
+                break
+            continue
         except Exception as e:
-            print(f"\nUnexpected receive error: {e}")
+            print(f"Unexpected remote receive error: {e}")
             break
 
         try:
@@ -189,286 +173,313 @@ async def receiver(websocket: websockets.WebSocketClientProtocol,
         except json.JSONDecodeError:
             continue
 
+        # Log locally where appropriate
         msg_type = data.get("type")
-
-        if msg_type == "system":
-            display_system(data["message"])
-            logger.log_system(data["message"])
-
-        elif msg_type == "new_session":
-            display_system(data["message"])
-            logger.log_system(data["message"])
-            logger.start()   # start a fresh log file
-
-        elif msg_type == "scenario_reset":
-            display_system(data["message"])
-            logger.log_system(data["message"])
-            setup_done.clear()
-
-        elif msg_type == "setup_required":
-            await handle_ai_setup(websocket, logger)
-            setup_done.set()
-
-        elif msg_type == "chat":
-            sender = data["sender"]
-            message = data["message"]
-            if sender == username:
-                continue
-            display_chat(sender, message)
-            logger.log_chat(sender, message)
-
+        if msg_type == "chat":
+            sender = data.get("sender", "")
+            message = data.get("message", "")
+            if state.logger:
+                state.logger.log_chat(sender, message)
+        elif msg_type == "system":
+            if state.logger:
+                state.logger.log_system(data.get("message", ""))
         elif msg_type == "reasoning":
-            sender = data["sender"]
-            reasoning = data["message"]
-            display_reasoning(sender, reasoning)
-            logger.log_reasoning(sender, reasoning)
+            sender = data.get("sender", "")
+            reasoning = data.get("message", "")
+            if state.logger:
+                state.logger.log_reasoning(sender, reasoning)
+        elif msg_type == "new_session":
+            if state.logger:
+                state.logger.log_system(data.get("message", ""))
+                state.logger.start()   # start a fresh log file
 
-        # (Unknown types are silently ignored)
-
-
-# -------------------------------------------------------------------
-# AI setup flow (when server sends "setup_required")
-# -------------------------------------------------------------------
-async def handle_ai_setup(websocket: websockets.WebSocketClientProtocol,
-                          logger: SessionLogger) -> None:
-    """
-    Prompt the local user for AI persona settings, then send them to the server.
-    This runs inside the receiver loop but blocks until configuration is sent.
-    """
-    print("\nYou are the first user. Configure the AI.\n")
-
-    reconfigure = input("Reconfigure AI persona? (y/n): ").strip().lower()
-    if reconfigure == "y" or not AI_PERSONA_FILE.exists():
-        ai_name = input("AI Name: ").strip()
-        behavior = input("AI Behavior: ").strip()
-        first_message = input("First Message: ").strip()
-        print("\nReasoning Intensity:")
-        print("1. easy")
-        print("2. medium")
-        print("3. high")
-        choice = input("\nChoose option: ").strip()
-        mapping = {"1": "low", "2": "medium", "3": "high"}
-        reasoning_level = mapping.get(choice, "medium")
-        show_reasoning = input("\nShow reasoning? (y/n): ").strip().lower() == "y"
-        save_ai_persona(ai_name, behavior, first_message, reasoning_level, show_reasoning)
-        print("\nAI persona saved locally.")
-    else:
-        ai_name, behavior, first_message, reasoning_level, show_reasoning = load_ai_persona()
-        print(f"\nLoaded saved AI persona: {ai_name}")
-
-    setup_data = {
-        "ai_name": ai_name,
-        "behavior": behavior,
-        "first_message": first_message,
-        "reasoning_level": reasoning_level,
-        "show_reasoning": show_reasoning,
-    }
-    await websocket.send(json.dumps(setup_data))
-
-    logger.log_system("AI CONFIGURED")
-    logger.write(f"AI Name: {ai_name}")
-    logger.write(f"Behavior: {behavior}")
-    logger.write(f"First Message: {first_message}")
-    logger.write(f"Reasoning Level: {reasoning_level}")
-    logger.write(f"Show Reasoning: {show_reasoning}")
-
-    print("\nAI configured.\n")
-
+        # Forward to all local browser clients
+        dead = []
+        for ws in list(state.local_clients.keys()):
+            try:
+                await ws.send_json(data)
+            except Exception:
+                dead.append(ws)
+        for ws in dead:
+            state.local_clients.pop(ws, None)
 
 # -------------------------------------------------------------------
-# NEW: Upload a local session log to the server
+# Send a message to the remote server
 # -------------------------------------------------------------------
-def parse_log_file(filepath: Path, ai_name: str, username: str) -> List[Dict[str, str]]:
-    """
-    Parse a client log file (sessions/YYYY-MM-DD_N.txt) and return
-    a list of history entries suitable for the server.
-    """
-    history: List[Dict[str, str]] = []
-    skip_next_reasoning = False
+async def send_to_remote(message: str) -> None:
+    if state.remote_ws and state.remote_ws.open:
+        await state.remote_ws.send(message)
 
-    with open(filepath, "r", encoding="utf-8") as f:
-        for raw_line in f:
-            line = raw_line.rstrip("\n")
-            if skip_next_reasoning:
-                skip_next_reasoning = False
-                continue
+# -------------------------------------------------------------------
+# Connect to the remote server (called after login)
+# -------------------------------------------------------------------
+async def connect_remote(username: str, password: str) -> bool:
+    try:
+        ws = await websockets.connect(SERVER_URL)
+    except Exception as e:
+        print(f"Failed to connect to server: {e}")
+        return False
 
-            # Only process lines that start with a timestamp bracket
-            if not line.startswith("[") or "] " not in line:
-                continue
+    # Send join_request
+    join_msg = json.dumps({
+        "type": "join_request",
+        "username": username,
+        "password": password,
+    })
+    await ws.send(join_msg)
 
-            # Split off the timestamp
-            idx = line.index("] ")
-            after_ts = line[idx + 2:]  # the part after "[HH:MM:SS] "
+    # Wait for join_response
+    try:
+        raw = await ws.recv()
+        resp = json.loads(raw)
+        if resp.get("type") == "join_response" and resp.get("accepted"):
+            state.remote_ws = ws
+            role = resp.get("role", "user")
+            print(f"Connected as {username} (role: {role})")
 
-            # Handle reasoning header: "[AI_NAME REASONING]"
-            if after_ts.startswith("[") and after_ts.endswith("]") and " REASONING]" in after_ts:
-                skip_next_reasoning = True
-                continue
+            # --- NEW: inform browsers of the server base URL for uploads ---
+            # Convert wss:// URL to https:// and strip /chat
+            remote_base_url = SERVER_URL.replace("wss://", "https://").rsplit("/", 1)[0]
+            server_info = {
+                "type": "server_info",
+                "upload_url": remote_base_url,
+            }
+            for ws_local in list(state.local_clients.values()):
+                try:
+                    await ws_local.send_json(server_info)
+                except:
+                    pass
+            # Also send a system message
+            for ws_local in state.local_clients.values():
+                try:
+                    await ws_local.send_json({"type": "system", "message": f"Connected to server as {username}."})
+                except:
+                    pass
+            return True
+        else:
+            reason = resp.get("reason", "Unknown reason")
+            print(f"Join rejected: {reason}")
+            for ws_local in state.local_clients.values():
+                try:
+                    await ws_local.send_json({"type": "login_failed", "reason": reason})
+                except:
+                    pass
+            await ws.close()
+            return False
+    except Exception as e:
+        print(f"Error during join handshake: {e}")
+        return False
 
-            # System message
-            if after_ts.startswith("SYSTEM:"):
-                continue
+async def reconnect_remote() -> bool:
+    config = load_user_config()
+    username = config.get("username", "")
+    password = config.get("password", "")
+    if not username:
+        return False
+    return await connect_remote(username, password)
 
-            # Normal chat line: "SENDER: message"
-            if ": " not in after_ts:
-                continue
+# -------------------------------------------------------------------
+# Local WebSocket handler (browser <-> client.py)
+# -------------------------------------------------------------------
+async def local_ws_handler(request: aiohttp.web.Request) -> aiohttp.web.WebSocketResponse:
+    ws = aiohttp.web.WebSocketResponse()
+    await ws.prepare(request)
+    state.local_clients[ws] = ""   # username assigned later
+    try:
+        async for msg in ws:
+            if msg.type == aiohttp.WSMsgType.TEXT:
+                await handle_local_message(ws, msg.data)
+            elif msg.type == aiohttp.WSMsgType.ERROR:
+                print(f"Local WebSocket error: {ws.exception()}")
+    finally:
+        state.local_clients.pop(ws, None)
+    return ws
 
-            sender, message = after_ts.split(": ", 1)
-
-            # Map "You" to the current username, other senders to user/AI
-            if sender == "You":
-                history.append({"role": "user", "sender": username, "content": message})
-            elif sender.lower() == ai_name.lower():
-                history.append({"role": "assistant", "sender": ai_name, "content": message})
-            # All other senders are ignored (could be other human players – we skip them)
-
-    return history
-
-
-async def handle_upload_command(websocket: websockets.WebSocketClientProtocol,
-                                msg: str,
-                                username: str,
-                                logger: SessionLogger) -> None:
-    """Process the /upload <filename> command."""
-    parts = msg.split(maxsplit=1)
-    if len(parts) < 2:
-        print("Usage: /upload <filename>")
-        print("Example: /upload 2026-05-29_1.txt")
+# -------------------------------------------------------------------
+# Handle messages from the browser
+# -------------------------------------------------------------------
+async def handle_local_message(ws: aiohttp.web.WebSocketResponse, raw: str):
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
         return
 
-    filename = parts[1].strip()
-    # Allow full path or just the name inside sessions/
+    msg_type = data.get("type")
+
+    if msg_type == "login":
+        username = data.get("username", "").strip()
+        password = data.get("password", "").strip()
+        if not username:
+            await ws.send_json({"type": "login_failed", "reason": "Username required"})
+            return
+
+        config = load_user_config()
+        config["username"] = username
+        if data.get("remember_password"):
+            config["password"] = password
+        else:
+            config.pop("password", None)
+        save_user_config(config)
+
+        # Start session logger
+        persona = config.get("persona", "")
+        state.logger = SessionLogger(username, persona)
+        state.logger.start()
+        await ws.send_json({"type": "login_accepted", "username": username})
+
+        # Connect to remote
+        success = await connect_remote(username, password)
+        if not success:
+            return
+
+        # Start receiver if not already running
+        if not state.receiver_task or state.receiver_task.done():
+            state.receiver_task = asyncio.create_task(remote_receiver())
+
+    elif msg_type == "chat_message":
+        message = data.get("message", "")
+        if not message:
+            return
+        # Log locally
+        if state.logger:
+            username = state.local_clients.get(ws, "You")
+            state.logger.log_chat(username, message)
+        # Send as plain text (the server expects non-JSON for chat)
+        await send_to_remote(message)
+
+    elif msg_type == "music_control":
+        await send_to_remote(json.dumps(data))
+
+    elif msg_type == "ai_config_update":
+        await send_to_remote(json.dumps(data))
+
+    elif msg_type == "upload_session_file" or msg_type == "/upload":
+        filename = data.get("filename", "").strip()
+        await handle_upload_session_file(ws, filename)
+
+    elif msg_type == "ai_name_response":
+        upload_id = data.get("upload_id")
+        ai_name = data.get("ai_name", "").strip()
+        if upload_id and ai_name:
+            await complete_upload_session(upload_id, ai_name)
+
+    else:
+        # Forward any other JSON message directly to remote
+        await send_to_remote(json.dumps(data))
+
+# -------------------------------------------------------------------
+# Session upload from local log file
+# -------------------------------------------------------------------
+async def handle_upload_session_file(ws: aiohttp.web.WebSocketResponse, filename: str):
+    if not filename:
+        await ws.send_json({"type": "system", "message": "Usage: /upload <filename>"})
+        return
+
     filepath = Path(filename)
     if not filepath.is_absolute():
         filepath = SESSION_ROOT / filepath
-
     if not filepath.exists():
-        print(f"File not found: {filepath}")
+        await ws.send_json({"type": "system", "message": f"File not found: {filepath}"})
         return
 
-    # Determine AI name
-    ai_name = ""
-    if AI_PERSONA_FILE.exists():
-        _, _, _, _, _ = load_ai_persona()
-        # We only need the name, but load_ai_persona returns more.
-        # Let's reload just the name to avoid unpacking mess.
-        data = json.loads(AI_PERSONA_FILE.read_text(encoding="utf-8"))
-        saved_ai = data.get("ai_name", "")
-    else:
-        saved_ai = ""
+    upload_id = str(id(ws)) + "_" + datetime.now().isoformat()
+    state.pending_upload[upload_id] = {
+        "ws": ws,
+        "filepath": filepath,
+        "username": state.local_clients.get(ws, "unknown"),
+    }
+    await ws.send_json({"type": "ask_ai_name", "upload_id": upload_id, "filename": filename})
 
-    if saved_ai:
-        prompt = f"AI name (press Enter to use '{saved_ai}'): "
-    else:
-        prompt = "Enter the AI name used in this session: "
-
-    ai_name = await asyncio.get_running_loop().run_in_executor(None, input, prompt)
-    ai_name = ai_name.strip() or saved_ai
-    if not ai_name:
-        print("AI name is required. Aborting upload.")
+async def complete_upload_session(upload_id: str, ai_name: str):
+    info = state.pending_upload.pop(upload_id, None)
+    if not info:
         return
+    ws = info["ws"]
+    filepath = info["filepath"]
+    username = info["username"]
 
-    # Parse the log
+    def parse_log_file(filepath: Path, ai_name: str, username: str) -> list:
+        history = []
+        skip_next_reasoning = False
+        with open(filepath, "r", encoding="utf-8") as f:
+            for raw_line in f:
+                line = raw_line.rstrip("\n")
+                if skip_next_reasoning:
+                    skip_next_reasoning = False
+                    continue
+                if not line.startswith("[") or "] " not in line:
+                    continue
+                idx = line.index("] ")
+                after_ts = line[idx + 2:]
+                if after_ts.startswith("[") and after_ts.endswith("]") and " REASONING]" in after_ts:
+                    skip_next_reasoning = True
+                    continue
+                if after_ts.startswith("SYSTEM:"):
+                    continue
+                if ": " not in after_ts:
+                    continue
+                sender, message = after_ts.split(": ", 1)
+                if sender == "You":
+                    history.append({"role": "user", "sender": username, "content": message})
+                elif sender.lower() == ai_name.lower():
+                    history.append({"role": "assistant", "sender": ai_name, "content": message})
+        return history
+
     try:
         history = parse_log_file(filepath, ai_name, username)
     except Exception as e:
-        print(f"Error reading log file: {e}")
+        await ws.send_json({"type": "system", "message": f"Error reading log file: {e}"})
         return
 
     if not history:
-        print("No valid chat messages found in the file.")
+        await ws.send_json({"type": "system", "message": "No valid chat messages found."})
         return
 
-    # Send to server
     upload_msg = {
         "type": "upload_session",
         "history": history,
     }
+    await send_to_remote(json.dumps(upload_msg))
+    await ws.send_json({"type": "system", "message": f"Uploading session from {filepath.name} with {len(history)} messages."})
+    if state.logger:
+        state.logger.log_system(f"Uploaded session from {filepath.name}")
+
+# -------------------------------------------------------------------
+# Serve static files
+# -------------------------------------------------------------------
+async def index_handler(request):
+    return web.FileResponse(STATIC_DIR / 'index.html')
+
+# -------------------------------------------------------------------
+# Main startup
+# -------------------------------------------------------------------
+async def start_local_server():
+    app = web.Application()
+    app.router.add_get('/ws', local_ws_handler)
+    app.router.add_static('/static/', STATIC_DIR, show_index=False)
+    app.router.add_get('/', index_handler)
+
+    port = find_free_port()
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, 'localhost', port)
+    await site.start()
+    print(f"Local server started at http://localhost:{port}")
+    webbrowser.open(f"http://localhost:{port}")
+    return runner, port
+
+# -------------------------------------------------------------------
+# Entry point
+# -------------------------------------------------------------------
+async def main():
+    runner, port = await start_local_server()
     try:
-        await websocket.send(json.dumps(upload_msg))
-        print(f"Uploaded {len(history)} messages. The server will now replay them.")
-        logger.log_system(f"Uploaded session from {filepath.name}")
-    except Exception as e:
-        print(f"Failed to send upload: {e}")
-
-
-# -------------------------------------------------------------------
-# WebSocket send loop
-# -------------------------------------------------------------------
-async def sender(websocket: websockets.WebSocketClientProtocol,
-                 setup_done: asyncio.Event,
-                 username: str,
-                 logger: SessionLogger) -> None:
-    """
-    Wait until AI setup is complete, then read user input and send it to the server.
-    Local commands (like /upload) are handled here.
-    """
-    await setup_done.wait()
-    loop = asyncio.get_running_loop()
-
-    while True:
-        if not setup_done.is_set():
-            await setup_done.wait()
-
-        msg = await loop.run_in_executor(None, input, "> ")
-        msg = msg.strip()
-        if not msg:
-            continue
-
-        # Local command: /upload
-        if msg.startswith("/upload"):
-            await handle_upload_command(websocket, msg, username, logger)
-            continue
-
-        # All other messages go to the server as-is
-        try:
-            await websocket.send(msg)
-        except websockets.ConnectionClosed:
-            break
-
-
-# -------------------------------------------------------------------
-# Main entry point
-# -------------------------------------------------------------------
-async def main() -> None:
-    line()
-    # ---- User persona ----
-    if PERSONA_FILE.exists():
-        username, persona = load_persona()
-        print(f"Loaded saved persona: {username}")
-    else:
-        username = input("Enter username: ").strip()
-        persona = input("Enter persona: ").strip()
-        save_persona(username, persona)
-        print("Persona saved locally.")
-    line()
-
-    logger = SessionLogger(username, persona)
-    logger.start()
-
-    # ---- Connect to server ----
-    try:
-        websocket = await websockets.connect(SERVER_URL)
-    except Exception as e:
-        print(f"Failed to connect: {e}")
-        sys.exit(1)
-
-    await websocket.send(username)
-    logger.log_system(f"CONNECTED AS {username}")
-    print(f"Connected as {username}\n")
-
-    setup_done = asyncio.Event()
-    setup_done.set()   # assume AI already configured (will be cleared if needed)
-
-    await asyncio.gather(
-        receiver(websocket, username, setup_done, logger),
-        sender(websocket, setup_done, username, logger),
-    )
-
+        while True:
+            await asyncio.sleep(1)
+    except KeyboardInterrupt:
+        print("\nShutting down...")
+    finally:
+        await runner.cleanup()
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("\nExiting.")
+    asyncio.run(main())

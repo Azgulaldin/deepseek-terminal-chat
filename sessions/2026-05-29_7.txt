@@ -1,0 +1,6 @@
+Session started: 2026-05-29 23:27:50
+Username: Eather
+Persona: 18 year old male
+
+[23:27:53] SYSTEM: CONNECTED AS Eather
+[23:27:53] SYSTEM: Connected to Zombie girl

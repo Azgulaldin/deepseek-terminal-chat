@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DeepSeek Roleplay</title>
+  <style>
+    /* ---------- Modern Dark Theme with Glassmorphism ---------- */
+    :root {
+      --bg: #0a0a1a;
+      --glass: rgba(20, 20, 40, 0.85);
+      --glass-border: rgba(255, 255, 255, 0.1);
+      --neon: #b76eff;
+      --neon2: #ff6ec7;
+      --text: #e0e0f0;
+      --user-bubble: #2a2a4a;
+      --ai-bubble: #1e1e3a;
+      --system-color: #888;
+      --online: #4caf50;
+      --offline: #f44336;
+      --radius: 16px;
+      --shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+      --transition: all 0.3s ease;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      background-size: cover;
+      background-position: center;
+      transition: background-image 0.8s ease;
+    }
+
+    /* Animated gradient background fallback */
+    body::before {
+      content: "";
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: linear-gradient(45deg, #0f0c29, #302b63, #24243e);
+      background-size: 400% 400%;
+      animation: gradientShift 15s ease infinite;
+      z-index: -2;
+    }
+    body::after {
+      content: "";
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.3);
+      z-index: -1;
+    }
+    @keyframes gradientShift {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    /* ---------- Login Overlay ---------- */
+    #login-overlay {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(10px);
+      z-index: 1000;
+    }
+    .login-card {
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+      backdrop-filter: blur(20px);
+      border-radius: 20px;
+      padding: 2.5rem;
+      width: 90%;
+      max-width: 400px;
+      box-shadow: var(--shadow);
+      text-align: center;
+    }
+    .login-card h1 {
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+      background: linear-gradient(135deg, var(--neon), var(--neon2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .login-card input {
+      width: 100%;
+      margin: 0.8rem 0;
+      padding: 12px 15px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--glass-border);
+      border-radius: 10px;
+      color: var(--text);
+      font-size: 1rem;
+      outline: none;
+      transition: var(--transition);
+    }
+    .login-card input:focus {
+      border-color: var(--neon);
+      box-shadow: 0 0 10px rgba(183,110,255,0.3);
+    }
+    .login-card label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.9rem;
+      color: #aaa;
+      margin: 0.5rem 0;
+    }
+    .btn {
+      background: linear-gradient(135deg, var(--neon), var(--neon2));
+      border: none;
+      color: white;
+      padding: 12px 24px;
+      border-radius: 30px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: var(--transition);
+      box-shadow: 0 4px 15px rgba(183,110,255,0.4);
+      margin-top: 1rem;
+    }
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 25px rgba(183,110,255,0.6);
+    }
+
+    /* ---------- Main Layout ---------- */
+    #main-app {
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+    .sidebar {
+      width: 260px;
+      background: var(--glass);
+      backdrop-filter: blur(15px);
+      border-right: 1px solid var(--glass-border);
+      display: flex;
+      flex-direction: column;
+      padding: 1rem;
+      overflow-y: auto;
+      transition: transform 0.3s ease;
+    }
+    .sidebar h3 {
+      text-align: center;
+      margin-bottom: 1rem;
+      color: var(--neon);
+    }
+    .user-list {
+      list-style: none;
+      flex: 1;
+    }
+    .user-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0.5rem;
+      border-radius: 8px;
+      margin-bottom: 0.3rem;
+      transition: background 0.2s;
+    }
+    .user-item:hover {
+      background: rgba(255,255,255,0.05);
+    }
+    .profile-pic-small {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 2px solid var(--neon);
+    }
+    .online-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--online);
+      margin-right: 5px;
+    }
+    .offline-dot {
+      background: var(--offline);
+    }
+    .main-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .message {
+      display: flex;
+      gap: 10px;
+      animation: fadeInUp 0.3s ease;
+    }
+    .message.user {
+      justify-content: flex-end;
+    }
+    .message .bubble {
+      max-width: 70%;
+      padding: 12px 18px;
+      border-radius: 20px;
+      line-height: 1.5;
+      position: relative;
+      word-wrap: break-word;
+    }
+    .message.user .bubble {
+      background: linear-gradient(135deg, #4b6cb7, #182848);
+      border-bottom-right-radius: 5px;
+    }
+    .message.assistant .bubble {
+      background: rgba(255,255,255,0.08);
+      border-bottom-left-radius: 5px;
+    }
+    .message.system .bubble {
+      background: transparent;
+      color: var(--system-color);
+      text-align: center;
+      width: 100%;
+      font-style: italic;
+    }
+    .message .sender-name {
+      font-size: 0.8rem;
+      color: var(--neon);
+      margin-bottom: 4px;
+      display: block;
+    }
+    .profile-pic-msg {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 2px solid var(--neon2);
+      align-self: flex-start;
+    }
+    .reasoning-box {
+      background: rgba(255,255,255,0.05);
+      border-left: 3px solid var(--neon);
+      padding: 10px;
+      margin: 10px 0;
+      font-size: 0.9rem;
+      color: #aaa;
+      border-radius: 8px;
+      animation: fadeIn 0.5s;
+    }
+    .input-container {
+      padding: 1rem;
+      background: var(--glass);
+      backdrop-filter: blur(15px);
+      display: flex;
+      gap: 10px;
+      border-top: 1px solid var(--glass-border);
+    }
+    .input-container input {
+      flex: 1;
+      padding: 12px 20px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--glass-border);
+      border-radius: 30px;
+      color: var(--text);
+      font-size: 1rem;
+      outline: none;
+      transition: var(--transition);
+    }
+    .input-container input:focus {
+      border-color: var(--neon);
+    }
+    .input-container button {
+      background: var(--neon);
+      border: none;
+      border-radius: 50%;
+      width: 46px;
+      height: 46px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: var(--transition);
+      font-size: 1.2rem;
+    }
+    .input-container button:hover {
+      background: var(--neon2);
+    }
+
+    /* Music player */
+    .music-bar {
+      padding: 10px 20px;
+      background: rgba(10,10,30,0.9);
+      backdrop-filter: blur(10px);
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      border-bottom: 1px solid var(--glass-border);
+      font-size: 0.9rem;
+    }
+    .music-bar audio { display: none; }
+    .music-controls button {
+      background: transparent;
+      border: 1px solid var(--neon);
+      color: var(--neon);
+      border-radius: 50%;
+      width: 30px;
+      height: 30px;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+    .music-controls button:hover {
+      background: var(--neon);
+      color: white;
+    }
+    .progress-container {
+      flex: 1;
+      height: 5px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 5px;
+      cursor: pointer;
+      position: relative;
+    }
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      background: var(--neon);
+      border-radius: 5px;
+    }
+    .gallery-toggle {
+      background: var(--neon2);
+      border: none;
+      color: white;
+      padding: 5px 15px;
+      border-radius: 20px;
+      cursor: pointer;
+    }
+    .gallery-panel {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: var(--glass);
+      backdrop-filter: blur(20px);
+      border-top: 1px solid var(--glass-border);
+      display: flex;
+      overflow-x: auto;
+      gap: 10px;
+      padding: 10px;
+      transition: transform 0.3s ease;
+      transform: translateY(100%);
+    }
+    .gallery-panel.open {
+      transform: translateY(0);
+    }
+    .gallery-panel img {
+      height: 60px;
+      border-radius: 8px;
+      cursor: pointer;
+      object-fit: cover;
+      transition: transform 0.2s;
+    }
+    .gallery-panel img:hover {
+      transform: scale(1.1);
+    }
+
+    /* Modals */
+    .modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 2000;
+      visibility: hidden;
+      opacity: 0;
+      transition: visibility 0.3s, opacity 0.3s;
+    }
+    .modal.active {
+      visibility: visible;
+      opacity: 1;
+    }
+    .modal-content {
+      background: var(--glass);
+      backdrop-filter: blur(25px);
+      border: 1px solid var(--glass-border);
+      border-radius: 20px;
+      padding: 2rem;
+      width: 90%;
+      max-width: 500px;
+      box-shadow: var(--shadow);
+    }
+    .modal-content h3 {
+      margin-bottom: 1rem;
+      color: var(--neon);
+    }
+    .modal-content input, .modal-content select {
+      width: 100%;
+      padding: 10px;
+      margin: 0.5rem 0;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--glass-border);
+      border-radius: 8px;
+      color: var(--text);
+    }
+    .close-btn {
+      float: right;
+      background: none;
+      border: none;
+      color: var(--text);
+      font-size: 1.5rem;
+      cursor: pointer;
+    }
+
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; } to { opacity: 1; }
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .sidebar { width: 200px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Login Overlay -->
+  <div id="login-overlay">
+    <div class="login-card">
+      <h1>DeepSeek Realm</h1>
+      <input type="text" id="login-username" placeholder="Your username" autocomplete="off">
+      <input type="password" id="login-password" placeholder="Password (if required)">
+      <label>
+        <input type="checkbox" id="remember-password"> Remember password
+      </label>
+      <button class="btn" id="login-btn">Enter the Realm</button>
+      <p id="login-error" style="color:#f44336; margin-top:10px;"></p>
+    </div>
+  </div>
+
+  <!-- Main Application (hidden initially) -->
+  <div id="main-app" style="display: none;">
+    <!-- Left Sidebar: Users -->
+    <div class="sidebar" id="user-sidebar">
+      <h3>👥 Realm Members</h3>
+      <ul class="user-list" id="user-list"></ul>
+      <button class="btn" id="logout-btn" style="margin-top:auto;">Leave</button>
+    </div>
+
+    <!-- Main Chat Area -->
+    <div class="main-area">
+      <!-- Music Bar -->
+      <div class="music-bar" id="music-bar" style="display: none;">
+        <span style="color:var(--neon);">🎵</span>
+        <span id="music-now-playing">No music</span>
+        <div class="progress-container" id="progress-bar">
+          <div class="progress-fill" id="progress-fill"></div>
+        </div>
+        <div class="music-controls" id="music-controls" style="display: none;">
+          <button id="music-play">▶</button>
+          <button id="music-loop">🔁</button>
+        </div>
+        <button class="gallery-toggle" id="gallery-toggle">🖼️ Gallery</button>
+        <button id="ai-config-btn" style="display:none;" class="btn">⚙️ AI</button>
+      </div>
+
+      <!-- Chat Messages -->
+      <div class="chat-messages" id="chat-messages"></div>
+
+      <!-- Input -->
+      <div class="input-container">
+        <input type="text" id="message-input" placeholder="Type your message..." autocomplete="off">
+        <button id="send-btn">➤</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Gallery Panel -->
+  <div class="gallery-panel" id="gallery-panel"></div>
+
+  <!-- AI Configuration Modal (admin only) -->
+  <div class="modal" id="ai-config-modal">
+    <div class="modal-content">
+      <button class="close-btn" id="close-ai-modal">&times;</button>
+      <h3>🧠 AI Persona</h3>
+      <input type="text" id="ai-name" placeholder="AI Name">
+      <input type="text" id="ai-behavior" placeholder="Behavior">
+      <input type="text" id="ai-first-message" placeholder="First Message">
+      <select id="ai-reasoning">
+        <option value="low">Low reasoning</option>
+        <option value="medium" selected>Medium reasoning</option>
+        <option value="high">High reasoning</option>
+      </select>
+      <label><input type="checkbox" id="ai-show-reasoning"> Show reasoning</label>
+      <input type="password" id="ai-password" placeholder="Set session password (optional)">
+      <button class="btn" id="save-ai-config">Save AI</button>
+    </div>
+  </div>
+
+  <!-- Profile Picture Upload Modal -->
+  <div class="modal" id="upload-modal">
+    <div class="modal-content">
+      <button class="close-btn" id="close-upload-modal">&times;</button>
+      <h3>📷 Upload</h3>
+      <input type="file" id="profile-file" accept="image/*">
+      <button class="btn" id="upload-profile-btn">Set Profile Picture</button>
+      <hr style="margin:1rem 0; border-color:var(--glass-border);">
+      <input type="file" id="bg-file" accept="image/*" id="bg-file-input">
+      <button class="btn" id="upload-bg-btn" style="display:none;">Set Background</button>
+      <input type="file" id="music-file" accept=".mp3">
+      <button class="btn" id="upload-music-btn" style="display:none;">Upload Music</button>
+    </div>
+  </div>
+
+  <script>
+    // ---------- Global State ----------
+    let ws;
+    let username = '';
+    let isAdmin = false;
+    let serverBaseUrl = ''; // Will be set by server_info
+    let currentMusicUrl = null;
+    let audioElement = new Audio();
+    let musicPlaying = false;
+    let musicLoop = false;
+    let galleryImages = [];
+
+    // DOM elements
+    const loginOverlay = document.getElementById('login-overlay');
+    const mainApp = document.getElementById('main-app');
+    const chatMessages = document.getElementById('chat-messages');
+    const messageInput = document.getElementById('message-input');
+    const sendBtn = document.getElementById('send-btn');
+    const userList = document.getElementById('user-list');
+    const musicBar = document.getElementById('music-bar');
+    const musicControls = document.getElementById('music-controls');
+    const musicNowPlaying = document.getElementById('music-now-playing');
+    const musicPlayBtn = document.getElementById('music-play');
+    const musicLoopBtn = document.getElementById('music-loop');
+    const progressFill = document.getElementById('progress-fill');
+    const progressBar = document.getElementById('progress-bar');
+    const galleryPanel = document.getElementById('gallery-panel');
+    const galleryToggle = document.getElementById('gallery-toggle');
+    const aiConfigBtn = document.getElementById('ai-config-btn');
+    const aiModal = document.getElementById('ai-config-modal');
+    const uploadModal = document.getElementById('upload-modal');
+    const logoutBtn = document.getElementById('logout-btn');
+
+    // ---------- WebSocket Connection ----------
+    function connectWebSocket() {
+      const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(`${protocol}//${location.host}/ws`);
+
+      ws.onopen = () => console.log('Local WS connected');
+      ws.onmessage = (event) => handleServerMessage(JSON.parse(event.data));
+      ws.onclose = () => {
+        console.log('Local WS closed, reconnecting in 3s...');
+        setTimeout(connectWebSocket, 3000);
+      };
+    }
+
+    function send(msg) {
+      if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+    }
+
+    // ---------- Login ----------
+    document.getElementById('login-btn').addEventListener('click', () => {
+      const u = document.getElementById('login-username').value.trim();
+      const p = document.getElementById('login-password').value;
+      const rem = document.getElementById('remember-password').checked;
+      if (!u) return;
+      send({ type: 'login', username: u, password: p, remember_password: rem });
+    });
+
+    // ---------- Message Handling ----------
+    function handleServerMessage(data) {
+      switch(data.type) {
+        case 'login_accepted':
+          username = data.username;
+          loginOverlay.style.display = 'none';
+          mainApp.style.display = 'flex';
+          connectWebSocket(); // reconnect after login? Actually already connected.
+          break;
+        case 'login_failed':
+          document.getElementById('login-error').textContent = data.reason || 'Login failed';
+          break;
+        case 'server_info':
+          serverBaseUrl = data.upload_url || 'https://deepseek-terminal-chat-production-78d3.up.railway.app';
+          // Now we can enable upload features
+          break;
+        case 'session_state':
+          applySessionState(data);
+          break;
+        case 'chat':
+          appendMessage(data.sender, data.message, data.replay);
+          break;
+        case 'system':
+          appendSystemMessage(data.message);
+          break;
+        case 'reasoning':
+          appendReasoning(data.sender, data.message);
+          break;
+        case 'profile_pic_update':
+          updateProfilePic(data.username, data.url);
+          break;
+        case 'background_update':
+          document.body.style.backgroundImage = `url(${serverBaseUrl}${data.url})`;
+          break;
+        case 'music_state':
+          updateMusicState(data);
+          break;
+        case 'new_image':
+          addToGallery(data.url, data.uploader);
+          break;
+        case 'user_joined':
+          addUser(data.username, true);
+          break;
+        case 'user_left':
+          removeUser(data.username);
+          break;
+        case 'ai_config_changed':
+          // Optionally update UI
+          break;
+        case 'setup_required':
+          // Admin must configure AI
+          if (isAdmin) showAiModal();
+          break;
+        case 'ask_ai_name':
+          const aiName = prompt(`Enter AI name for session upload (${data.filename})`);
+          if (aiName) send({ type: 'ai_name_response', upload_id: data.upload_id, ai_name: aiName });
+          break;
+        case 'new_session':
+          chatMessages.innerHTML = '';
+          break;
+      }
+    }
+
+    function applySessionState(state) {
+      // History
+      chatMessages.innerHTML = '';
+      if (state.history) state.history.forEach(entry => appendMessage(entry.sender, entry.content, true));
+      // Background
+      if (state.background_url) document.body.style.backgroundImage = `url(${serverBaseUrl}${state.background_url})`;
+      // Music
+      if (state.music_state) updateMusicState(state.music_state);
+      // Profile pics
+      if (state.profile_pics) Object.entries(state.profile_pics).forEach(([user, url]) => updateProfilePic(user, url));
+      // Gallery
+      if (state.gallery) state.gallery.forEach(img => addToGallery(img.url, img.uploader));
+      // Online users
+      if (state.online_users) Object.entries(state.online_users).forEach(([user, role]) => addUser(user, true));
+      // Admin detection
+      isAdmin = (state.ai_config && username === state.ai_config.admin_username); // rough
+      if (isAdmin) {
+        aiConfigBtn.style.display = 'inline-block';
+        document.getElementById('upload-bg-btn').style.display = 'inline-block';
+        document.getElementById('upload-music-btn').style.display = 'inline-block';
+        musicControls.style.display = 'flex';
+      }
+    }
+
+    // ---------- Chat UI ----------
+    function appendMessage(sender, text, isReplay = false) {
+      const div = document.createElement('div');
+      div.className = `message ${sender === username ? 'user' : sender === 'SYSTEM' ? 'system' : 'assistant'}`;
+      const profilePic = getProfilePicUrl(sender);
+      if (sender !== 'SYSTEM' && sender !== username) {
+        const img = document.createElement('img');
+        img.src = profilePic || 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="50" fill="%23b76eff"/><text x="50" y="55" text-anchor="middle" fill="white" font-size="40">?</text></svg>';
+        img.className = 'profile-pic-msg';
+        div.appendChild(img);
+      }
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble';
+      if (sender !== 'SYSTEM' && sender !== username) {
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'sender-name';
+        nameSpan.textContent = sender;
+        bubble.appendChild(nameSpan);
+      }
+      bubble.appendChild(document.createTextNode(text));
+      div.appendChild(bubble);
+      if (sender === username && sender !== 'SYSTEM') {
+        const img = document.createElement('img');
+        img.src = getProfilePicUrl(username) || 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="50" fill="%23ff6ec7"/><text x="50" y="55" text-anchor="middle" fill="white" font-size="40">?</text></svg>';
+        img.className = 'profile-pic-msg';
+        div.appendChild(img);
+      }
+      chatMessages.appendChild(div);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    function appendSystemMessage(text) {
+      const div = document.createElement('div');
+      div.className = 'message system';
+      div.innerHTML = `<div class="bubble">${text}</div>`;
+      chatMessages.appendChild(div);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    function appendReasoning(sender, text) {
+      const div = document.createElement('div');
+      div.className = 'reasoning-box';
+      div.innerHTML = `<strong>${sender} reasoning:</strong><br>${text}`;
+      chatMessages.appendChild(div);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    // Profile pic cache
+    const profilePics = {};
+    function getProfilePicUrl(user) {
+      return profilePics[user] ? serverBaseUrl + profilePics[user] : null;
+    }
+    function updateProfilePic(user, url) {
+      profilePics[user] = url;
+      // Update user list and message icons dynamically? For simplicity we'll just update user list on next render.
+      // We could re-render user list, but it's fine.
+    }
+
+    // ---------- User List ----------
+    function addUser(user, online) {
+      const existing = document.getElementById(`user-${user}`);
+      if (existing) existing.remove();
+      const li = document.createElement('li');
+      li.className = 'user-item';
+      li.id = `user-${user}`;
+      li.innerHTML = `
+        <span class="online-dot ${online ? '' : 'offline-dot'}"></span>
+        <img class="profile-pic-small" src="${getProfilePicUrl(user) || 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="50" fill="%23888"/></svg>'}">
+        <span>${user}</span>
+      `;
+      userList.appendChild(li);
+    }
+    function removeUser(user) {
+      const el = document.getElementById(`user-${user}`);
+      if (el) el.remove();
+    }
+
+    // ---------- Music ----------
+    function updateMusicState(state) {
+      if (!state.url) {
+        musicBar.style.display = 'none';
+        return;
+      }
+      musicBar.style.display = 'flex';
+      musicNowPlaying.textContent = state.url.split('/').pop() || 'Music';
+      if (state.url !== currentMusicUrl) {
+        audioElement.src = serverBaseUrl + state.url;
+        currentMusicUrl = state.url;
+      }
+      audioElement.loop = state.loop;
+      musicLoopBtn.textContent = state.loop ? '🔂' : '🔁';
+      if (state.playing) {
+        // sync time: compute how much time passed since state was emitted
+        const elapsed = (Date.now()/1000 - state.server_time);
+        audioElement.currentTime = state.currentTime + elapsed;
+        audioElement.play().catch(console.warn);
+        musicPlayBtn.textContent = '⏸️';
+      } else {
+        audioElement.pause();
+        audioElement.currentTime = state.currentTime;
+        musicPlayBtn.textContent = '▶';
+      }
+      musicPlaying = state.playing;
+      musicLoop = state.loop;
+    }
+
+    audioElement.addEventListener('timeupdate', () => {
+      if (audioElement.duration) {
+        const pct = (audioElement.currentTime / audioElement.duration) * 100;
+        progressFill.style.width = pct + '%';
+      }
+    });
+
+    musicPlayBtn.addEventListener('click', () => {
+      if (!isAdmin) return;
+      const action = musicPlaying ? 'pause' : 'play';
+      send({ type: 'music_control', action, currentTime: audioElement.currentTime });
+    });
+    musicLoopBtn.addEventListener('click', () => {
+      if (!isAdmin) return;
+      send({ type: 'music_control', action: 'loop', loop: !musicLoop });
+    });
+    progressBar.addEventListener('click', (e) => {
+      if (!isAdmin) return;
+      const rect = progressBar.getBoundingClientRect();
+      const fraction = (e.clientX - rect.left) / rect.width;
+      const time = fraction * audioElement.duration;
+      send({ type: 'music_control', action: 'seek', currentTime: time });
+    });
+
+    // ---------- Gallery ----------
+    function addToGallery(url, uploader) {
+      const fullUrl = serverBaseUrl + url;
+      if (galleryImages.find(img => img.url === fullUrl)) return;
+      galleryImages.push({ url: fullUrl, uploader });
+      const img = document.createElement('img');
+      img.src = fullUrl;
+      img.title = `by ${uploader}`;
+      img.onclick = () => window.open(fullUrl, '_blank');
+      galleryPanel.appendChild(img);
+    }
+    galleryToggle.addEventListener('click', () => {
+      galleryPanel.classList.toggle('open');
+    });
+
+    // ---------- AI Config Modal ----------
+    aiConfigBtn.addEventListener('click', showAiModal);
+    document.getElementById('close-ai-modal').addEventListener('click', () => aiModal.classList.remove('active'));
+    document.getElementById('save-ai-config').addEventListener('click', () => {
+      send({
+        type: 'ai_config_update',
+        ai_name: document.getElementById('ai-name').value,
+        behavior: document.getElementById('ai-behavior').value,
+        first_message: document.getElementById('ai-first-message').value,
+        reasoning_level: document.getElementById('ai-reasoning').value,
+        show_reasoning: document.getElementById('ai-show-reasoning').checked,
+        password: document.getElementById('ai-password').value
+      });
+      aiModal.classList.remove('active');
+    });
+    function showAiModal() {
+      aiModal.classList.add('active');
+    }
+
+    // ---------- Upload Modal ----------
+    document.getElementById('close-upload-modal').addEventListener('click', () => uploadModal.classList.remove('active'));
+    document.getElementById('upload-profile-btn').addEventListener('click', async () => {
+      const file = document.getElementById('profile-file').files[0];
+      if (!file) return;
+      const form = new FormData();
+      form.append('file', file);
+      form.append('username', username);
+      await fetch(`${serverBaseUrl}/upload/profile`, { method: 'POST', body: form });
+    });
+    document.getElementById('upload-bg-btn').addEventListener('click', async () => {
+      if (!isAdmin) return;
+      const file = document.getElementById('bg-file').files[0];
+      if (!file) return;
+      const form = new FormData();
+      form.append('file', file);
+      form.append('username', username);
+      form.append('password', localStorage.getItem('saved_password') || '');
+      await fetch(`${serverBaseUrl}/upload/background`, { method: 'POST', body: form });
+    });
+    document.getElementById('upload-music-btn').addEventListener('click', async () => {
+      if (!isAdmin) return;
+      const file = document.getElementById('music-file').files[0];
+      if (!file) return;
+      const form = new FormData();
+      form.append('file', file);
+      form.append('username', username);
+      form.append('password', localStorage.getItem('saved_password') || '');
+      await fetch(`${serverBaseUrl}/upload/music`, { method: 'POST', body: form });
+    });
+
+    // Toggle upload modal visibility
+    document.getElementById('profile-file').addEventListener('click', () => uploadModal.classList.add('active'));
+    // For convenience, add a button in the UI to open upload modal. We'll add a small icon.
+    // (Not in the HTML yet, but can be added.)
+
+    // ---------- Logout ----------
+    logoutBtn.addEventListener('click', () => {
+      ws.close();
+      location.reload();
+    });
+
+    // ---------- Send Message ----------
+    sendBtn.addEventListener('click', sendMessage);
+    messageInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(); });
+    function sendMessage() {
+      const text = messageInput.value.trim();
+      if (!text) return;
+      send({ type: 'chat_message', message: text });
+      messageInput.value = '';
+    }
+
+    // ---------- Initialization ----------
+    connectWebSocket();
+  </script>
+</body>
+</html>

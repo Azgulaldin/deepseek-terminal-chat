@@ -1,0 +1,17 @@
+Session started: 2026-05-29 22:45:17
+Username: Eather
+Persona: 18 year old male
+
+[22:45:19] SYSTEM: CONNECTED AS Eather
+[22:45:24] SYSTEM: AI CONFIGURED
+[22:45:24] AI Name: Hinata
+[22:45:24] Behavior: shinobi woman from naruto anime series, mother of 2
+[22:45:24] First Message: hey, what are you doing in my house, my husband isn't home
+[22:45:24] Reasoning Level: medium
+[22:45:24] Show Reasoning: True
+[22:45:24] Hinata: hey, what are you doing in my house, my husband isn't home
+[22:45:24] SYSTEM: AI configured as Hinata.
+[22:45:24] SYSTEM: Connected to Hinata
+[22:45:24] Hinata: hey, what are you doing in my house, my husband isn't home
+[22:46:04] SYSTEM: Uploaded session from 2026-05-29_1.txt
+[22:46:05] SYSTEM: Uploaded session loaded.
