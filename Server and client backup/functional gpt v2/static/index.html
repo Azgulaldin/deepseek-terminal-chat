@@ -321,49 +321,6 @@
       background: rgba(255,255,255,0.07);
     }
 
-    .rich-segment {
-      white-space: pre-wrap;
-    }
-    .rich-bold {
-      font-weight: 700;
-    }
-    .rich-quote {
-      font-style: italic;
-    }
-
-    .session-browser {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-
-    .session-browser-toolbar {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-
-    .session-file-name {
-      padding: 10px 12px;
-      border-radius: 14px;
-      border: 1px dashed rgba(255,255,255,0.14);
-      color: var(--muted);
-      background: rgba(255,255,255,0.03);
-      font-size: 12px;
-      line-height: 1.45;
-      word-break: break-word;
-    }
-
-    .text-settings-grid {
-      display: grid;
-      gap: 12px;
-    }
-
-    .color-swatch option {
-      color: #fff;
-    }
-
     .meta-row {
       display: flex;
       align-items: center;
@@ -1069,7 +1026,7 @@
           <textarea id="messageInput" placeholder="Write a message or command. Press Enter to send, Shift+Enter for a new line."></textarea>
           <div class="composer-actions">
             <button id="sendMessageBtn" class="primary-btn" type="button">Send</button>
-            <button id="quickUploadSessionBtn" class="secondary-btn" type="button">Load log</button>
+            <button id="quickUploadSessionBtn" class="secondary-btn" type="button">Upload log</button>
           </div>
         </div>
       </div>
@@ -1094,7 +1051,7 @@
           <button id="openAiButton2" class="secondary-btn hidden" type="button">Edit AI persona</button>
           <button id="openMediaButton" class="secondary-btn" type="button">Media uploads</button>
           <button id="uploadProfileQuickBtn" class="secondary-btn" type="button">Change profile pic</button>
-          <button id="uploadSessionQuickBtn" class="secondary-btn" type="button">Load session</button>
+          <button id="uploadSessionQuickBtn" class="secondary-btn" type="button">Upload session log</button>
         </div>
       </div>
 
@@ -1108,38 +1065,7 @@
           <button class="chip command-chip" data-command="/wake" type="button">/wake</button>
           <button class="chip command-chip" data-command="/clear" type="button">/clear</button>
           <button class="chip command-chip" data-command="/new" type="button">/new</button>
-          <button class="chip command-chip" data-command="/remove" type="button">/remove</button>
-          <button class="chip command-chip" data-command="/load" type="button">/load</button>
           <button class="chip command-chip" data-command="/export" type="button">/export</button>
-        </div>
-      </div>
-
-      <div class="right-section">
-        <div class="section-title">
-          <h3>Text colors</h3>
-          <span>Saved locally</span>
-        </div>
-        <div class="text-settings-grid">
-          <div class="field">
-            <label for="quoteColorSelect">Quoted text color</label>
-            <select id="quoteColorSelect" class="color-swatch">
-              <option value="purple">Purple</option>
-              <option value="pink">Pink</option>
-              <option value="red">Red</option>
-              <option value="blue">Blue</option>
-              <option value="green">Green</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="boldColorSelect">Bold text color</label>
-            <select id="boldColorSelect" class="color-swatch">
-              <option value="purple">Purple</option>
-              <option value="pink">Pink</option>
-              <option value="red">Red</option>
-              <option value="blue">Blue</option>
-              <option value="green">Green</option>
-            </select>
-          </div>
         </div>
       </div>
 
@@ -1270,42 +1196,27 @@
     </div>
   </div>
 
-    <div id="sessionUploadModalOverlay" class="modal-overlay" aria-hidden="true">
+  <div id="sessionUploadModalOverlay" class="modal-overlay" aria-hidden="true">
     <div class="modal">
       <div class="modal-header">
-        <h2>Load session log</h2>
+        <h2>Upload session log</h2>
         <button id="closeSessionUploadModal" class="icon-btn" type="button" title="Close">✕</button>
       </div>
       <div class="modal-body">
-        <div class="session-browser">
-          <div class="field">
-            <label for="sessionFileInput">Choose a saved log file</label>
-            <input id="sessionFileInput" type="file" accept=".txt,.log,text/plain" class="hidden" />
-            <div class="session-browser-toolbar">
-              <button id="browseSessionFileBtn" class="secondary-btn" type="button">Browse files</button>
-              <span class="small-note">Pick the log from the sessions folder on this machine.</span>
-            </div>
-            <div class="tiny">The browser reads the file locally, keeps every sender name, and sends the whole session back through the relay.</div>
-          </div>
-
-          <div class="field">
-            <label for="sessionAiNameInput">AI sender name in this log</label>
-            <input id="sessionAiNameInput" type="text" placeholder="DEEPSEEK" />
-            <div class="tiny">Messages from this sender are loaded as assistant messages. Everyone else is loaded as user messages.</div>
-          </div>
-
-          <div id="sessionFileName" class="session-file-name">No file selected.</div>
-
-          <div class="footer-actions">
-            <button id="loadSelectedSessionBtn" class="primary-btn" type="button">Load session</button>
-          </div>
+        <div class="field">
+          <label for="sessionPathInput">Session log filename or path</label>
+          <input id="sessionPathInput" type="text" placeholder="2026-05-30_1.txt or sessions/2026-05-30_1.txt" />
+          <div class="tiny">This is handled by the local relay, not the browser file picker. The file should exist on the machine running client.py.</div>
+        </div>
+        <div class="footer-actions">
+          <button id="beginSessionUploadBtn" class="primary-btn" type="button">Choose AI name</button>
         </div>
         <div id="sessionUploadError" class="tiny" style="color: var(--bad);"></div>
       </div>
     </div>
   </div>
 
-<div id="aiNamePromptOverlay" class="modal-overlay" aria-hidden="true">
+  <div id="aiNamePromptOverlay" class="modal-overlay" aria-hidden="true">
     <div class="modal">
       <div class="modal-header">
         <h2>AI name for imported log</h2>
@@ -1341,9 +1252,8 @@
           <div class="stat-card"><span>/wake</span><strong>Wake the AI up.</strong></div>
           <div class="stat-card"><span>/clear</span><strong>Clear current history.</strong></div>
           <div class="stat-card"><span>/new</span><strong>Start a new session.</strong></div>
-          <div class="stat-card"><span>/remove</span><strong>Remove the most recent message.</strong></div>
-          <div class="stat-card"><span>/load</span><strong>Open the session browser.</strong></div>
           <div class="stat-card"><span>/export</span><strong>Export current session JSON.</strong></div>
+          <div class="stat-card"><span>/load yyyy/mm/dd/n</span><strong>Load a saved session.</strong></div>
           <div class="stat-card"><span>/import filename.json</span><strong>Import a session export.</strong></div>
         </div>
         <div class="footer-actions">
@@ -1364,36 +1274,6 @@
       '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
     }[ch]));
     const timestamp = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-    const TEXT_COLOR_MAP = {
-      purple: '#b66cff',
-      pink: '#ff6dc6',
-      red: '#ff6b6b',
-      blue: '#5aa9ff',
-      green: '#4cd58a',
-    };
-
-    function getTextColor(name) {
-      return TEXT_COLOR_MAP[String(name || '').toLowerCase()] || TEXT_COLOR_MAP.purple;
-    }
-
-    function loadTextColorSettings() {
-      const quote = localStorage.getItem('dr_quote_color') || 'purple';
-      const bold = localStorage.getItem('dr_bold_color') || 'pink';
-      state.textColors.quote = TEXT_COLOR_MAP[quote] ? quote : 'purple';
-      state.textColors.bold = TEXT_COLOR_MAP[bold] ? bold : 'pink';
-    }
-
-    function saveTextColorSettings() {
-      localStorage.setItem('dr_quote_color', state.textColors.quote);
-      localStorage.setItem('dr_bold_color', state.textColors.bold);
-    }
-
-    function applyTextColorSettings() {
-      if (dom.quoteColorSelect) dom.quoteColorSelect.value = state.textColors.quote;
-      if (dom.boldColorSelect) dom.boldColorSelect.value = state.textColors.bold;
-      refreshRenderedChatMessages();
-    }
 
     function fallbackAvatar(seed) {
       const name = String(seed || '?');
@@ -1439,9 +1319,6 @@
       sendMessageBtn: $('sendMessageBtn'),
       commandChip: $('commandChip'),
       quickUploadSessionBtn: $('quickUploadSessionBtn'),
-
-      quoteColorSelect: $('quoteColorSelect'),
-      boldColorSelect: $('boldColorSelect'),
 
       userList: $('userList'),
       memberCount: $('memberCount'),
@@ -1507,11 +1384,8 @@
 
       sessionUploadModalOverlay: $('sessionUploadModalOverlay'),
       closeSessionUploadModal: $('closeSessionUploadModal'),
-      sessionFileInput: $('sessionFileInput'),
-      browseSessionFileBtn: $('browseSessionFileBtn'),
-      sessionFileName: $('sessionFileName'),
-      sessionAiNameInput: $('sessionAiNameInput'),
-      loadSelectedSessionBtn: $('loadSelectedSessionBtn'),
+      sessionPathInput: $('sessionPathInput'),
+      beginSessionUploadBtn: $('beginSessionUploadBtn'),
       sessionUploadError: $('sessionUploadError'),
 
       aiNamePromptOverlay: $('aiNamePromptOverlay'),
@@ -1525,7 +1399,6 @@
       closeCommandHelp: $('closeCommandHelp'),
       closeCommandHelp2: $('closeCommandHelp2'),
       openCommandsBtn: $('openCommandsBtn'),
-      commandChips: qsa('.command-chip'),
 
       musicBar: $('musicBar'),
       musicTitle: $('musicTitle'),
@@ -1565,15 +1438,9 @@
       gallery: [],
       backgroundUrl: '',
       music: { url: null, playing: false, currentTime: 0, loop: false, server_time: 0 },
-      textColors: {
-        quote: localStorage.getItem('dr_quote_color') || 'purple',
-        bold: localStorage.getItem('dr_bold_color') || 'pink',
-      },
       reconnectTimer: null,
       suppressScroll: false,
       awaitingAiName: null,
-      selectedSessionFile: null,
-      chatMessageSeq: 0,
     };
 
     function show(el) { el.classList.remove('hidden'); }
@@ -1903,15 +1770,13 @@
     function applySessionState(data) {
       if (Array.isArray(data.history)) {
         clearMessages();
-        state.history = data.history.map((entry, index) => ({
+        state.history = data.history.map((entry) => ({
           role: entry.role || 'user',
           sender: entry.sender || 'UNKNOWN',
           content: entry.content || '',
-          id: entry.id || entry.message_id || `${index + 1}`,
         }));
-        state.chatMessageSeq = state.history.length;
         for (const entry of state.history) {
-          appendChatMessage({ sender: entry.sender, message: entry.content, replay: true, role: entry.role, id: entry.id });
+          appendChatMessage({ sender: entry.sender, message: entry.content, replay: true, role: entry.role });
         }
       }
 
@@ -2001,27 +1866,10 @@
       openOverlay(dom.mediaModalOverlay);
     }
 
-    function clearSessionBrowserSelection() {
-      state.selectedSessionFile = null;
-      if (dom.sessionFileInput) dom.sessionFileInput.value = '';
-      if (dom.sessionFileName) dom.sessionFileName.textContent = 'No file selected.';
-      if (dom.sessionAiNameInput) dom.sessionAiNameInput.value = state.aiConfig.name || 'DEEPSEEK';
-    }
-
     function openSessionUploadModal() {
       dom.sessionUploadError.textContent = '';
-      clearSessionBrowserSelection();
+      dom.sessionPathInput.value = '';
       openOverlay(dom.sessionUploadModalOverlay);
-    }
-
-    function handleRemovalEvent(data) {
-      const count = Math.max(1, Number(data.count || data.remove_count || 1));
-      const rows = qsa('.message-row[data-message-kind="chat"]');
-      for (let i = 0; i < count; i += 1) {
-        const row = rows[rows.length - 1 - i];
-        if (row) row.remove();
-        if (state.history.length) state.history.pop();
-      }
     }
 
     function openAiNamePrompt(uploadId, filename) {
@@ -2032,124 +1880,9 @@
       openOverlay(dom.aiNamePromptOverlay);
     }
 
-    function updateSessionFileLabel(file) {
-      if (!dom.sessionFileName) return;
-      dom.sessionFileName.textContent = file ? `${file.name}${file.webkitRelativePath ? ` · ${file.webkitRelativePath}` : ''}` : 'No file selected.';
-    }
-
-    function parseSessionLogText(text, aiName, username) {
-      const history = [];
-      const lines = String(text || '').split(/\r?\n/);
-      const aiSender = String(aiName || '').trim().toLowerCase();
-      const userName = String(username || '').trim().toLowerCase();
-      let skippingReasoning = false;
-
-      for (const rawLine of lines) {
-        const line = rawLine.trimEnd();
-        if (!line) {
-          continue;
-        }
-
-        if (skippingReasoning) {
-          if (/^\[\d{2}:\d{2}:\d{2}\]\s*/.test(line)) {
-            skippingReasoning = false;
-          } else {
-            continue;
-          }
-        }
-
-        if (/^Session started:/i.test(line) || /^Username:/i.test(line) || /^Persona:/i.test(line)) {
-          continue;
-        }
-
-        const match = line.match(/^\[(.*?)\]\s*(.*)$/);
-        if (!match) {
-          continue;
-        }
-
-        const content = match[2];
-        if (!content) {
-          continue;
-        }
-
-        if (/^\[.*\sREASONING\]$/i.test(content)) {
-          skippingReasoning = true;
-          continue;
-        }
-
-        if (/^SYSTEM:/i.test(content)) {
-          continue;
-        }
-
-        const parts = content.match(/^([^:]+):\s([\s\S]*)$/);
-        if (!parts) {
-          continue;
-        }
-
-        const sender = parts[1].trim();
-        const message = parts[2];
-        if (!sender || !message) {
-          continue;
-        }
-
-        const senderLower = sender.toLowerCase();
-        const role = senderLower === aiSender && aiSender ? 'assistant' : 'user';
-        history.push({
-          role,
-          sender,
-          content: message,
-        });
-      }
-
-      return history;
-    }
-
-    async function loadSelectedSessionFile() {
-      const file = dom.sessionFileInput.files && dom.sessionFileInput.files[0];
-      if (!file) {
-        dom.sessionUploadError.textContent = 'Choose a log file first.';
-        return;
-      }
-
-      dom.sessionUploadError.textContent = '';
-      const aiName = dom.sessionAiNameInput.value.trim() || state.aiConfig.name || 'DEEPSEEK';
-      let text;
-      try {
-        text = await file.text();
-      } catch (err) {
-        dom.sessionUploadError.textContent = err.message || 'Could not read the file.';
-        return;
-      }
-
-      const history = parseSessionLogText(text, aiName, state.username);
-      if (!history.length) {
-        dom.sessionUploadError.textContent = 'No chat entries found in that log.';
-        return;
-      }
-
-      if (!send({
-        type: 'upload_session',
-        history,
-      })) {
-        dom.sessionUploadError.textContent = 'Not connected to the local relay yet.';
-        return;
-      }
-
-      appendSystemMessage(`Loaded ${file.name} with ${history.length} messages.`);
-      closeOverlay(dom.sessionUploadModalOverlay);
-    }
-
     function sendChat(value) {
       const text = String(value || '').trim();
       if (!text) return;
-
-      if (text === '/load') {
-        openSessionUploadModal();
-        dom.messageInput.value = '';
-        autoSizeComposer();
-        return;
-      }
-
       if (!send({ type: 'chat_message', message: text })) {
         appendSystemMessage('Not connected to the local relay yet.');
         return;
@@ -2213,7 +1946,6 @@
         admin_username: null,
       };
       state.music = { url: null, playing: false, currentTime: 0, loop: false, server_time: 0 };
-      state.selectedSessionFile = null;
       clearTimeout(state.reconnectTimer);
       if (state.ws) {
         try { state.ws.close(); } catch {}
@@ -2333,16 +2065,7 @@
 
         case 'new_session':
           clearMessages();
-          state.history = [];
-          state.chatMessageSeq = 0;
           appendSystemMessage(data.message || 'New session started.');
-          break;
-
-        case 'message_removed':
-        case 'remove_entry':
-        case 'history_removed':
-        case 'history_pruned':
-          handleRemovalEvent(data);
           break;
 
         case 'ask_ai_name':
@@ -2351,62 +2074,15 @@
       }
     }
 
-    function renderFormattedMessage(text) {
-      const fragment = document.createDocumentFragment();
-      const value = String(text ?? '');
-      const pattern = /(\*\*[^*]+\*\*|"[^"]+")/g;
-      let lastIndex = 0;
-
-      for (const match of value.matchAll(pattern)) {
-        if (match.index > lastIndex) {
-          fragment.appendChild(document.createTextNode(value.slice(lastIndex, match.index)));
-        }
-
-        const token = match[0];
-        const isBold = token.startsWith('**');
-        const isQuote = token.startsWith('"');
-        const span = document.createElement('span');
-        span.className = 'rich-segment' + (isBold ? ' rich-bold' : '') + (isQuote ? ' rich-quote' : '');
-        span.style.color = getTextColor(isBold ? state.textColors.bold : state.textColors.quote);
-        span.textContent = isBold ? token.slice(2, -2) : token.slice(1, -1);
-        fragment.appendChild(span);
-        lastIndex = match.index + token.length;
-      }
-
-      if (lastIndex < value.length) {
-        fragment.appendChild(document.createTextNode(value.slice(lastIndex)));
-      }
-
-      return fragment;
-    }
-
-    function refreshRenderedChatMessages() {
-      qsa('.message-row[data-message-kind="chat"] .bubble').forEach((bubble) => {
-        const raw = bubble.getAttribute('data-raw-message') || '';
-        bubble.textContent = '';
-        bubble.appendChild(renderFormattedMessage(raw));
-      });
-    }
-
-    function makeChatMessageId(data) {
-      return String(data.id || data.message_id || data.uuid || `${Date.now()}-${++state.chatMessageSeq}`);
-    }
-
     function appendChatMessage(data) {
       const sender = data.sender || 'UNKNOWN';
       const message = data.message ?? '';
       const replay = Boolean(data.replay);
       const isSelf = sender === state.username;
       const role = data.role || state.users[sender] || (isSelf ? 'you' : 'user');
-      const messageId = makeChatMessageId(data);
 
       const row = document.createElement('div');
       row.className = 'message-row' + (isSelf ? ' self' : '') + (replay ? ' replay' : '');
-      row.dataset.messageKind = 'chat';
-      row.dataset.messageId = messageId;
-      row.dataset.sender = sender;
-      row.dataset.role = role;
-      row.dataset.replay = replay ? '1' : '0';
 
       const avatar = document.createElement('img');
       avatar.className = 'avatar';
@@ -2422,8 +2098,7 @@
 
       const bubble = document.createElement('div');
       bubble.className = 'bubble';
-      bubble.dataset.rawMessage = message;
-      bubble.appendChild(renderFormattedMessage(message));
+      bubble.textContent = message;
 
       stack.appendChild(senderLine);
       stack.appendChild(bubble);
@@ -2437,9 +2112,6 @@
       }
 
       dom.messages.appendChild(row);
-      if (!replay) {
-        state.history.push({ role: role === 'assistant' ? 'assistant' : 'user', sender, content: message, id: messageId });
-      }
       scrollToBottom();
     }
 
@@ -2534,7 +2206,17 @@
     }
 
     function beginSessionUpload() {
-      loadSelectedSessionFile();
+      const filename = normalizeFilePath(dom.sessionPathInput.value);
+      if (!filename) {
+        dom.sessionUploadError.textContent = 'Enter a path or filename.';
+        return;
+      }
+      const ok = send({ type: 'upload_session_file', filename });
+      if (!ok) {
+        dom.sessionUploadError.textContent = 'Not connected to the relay.';
+        return;
+      }
+      closeOverlay(dom.sessionUploadModalOverlay);
     }
 
     function submitAiNamePrompt() {
@@ -2588,17 +2270,6 @@
         saveLocalCredentials();
       });
 
-      dom.quoteColorSelect.addEventListener('change', () => {
-        state.textColors.quote = dom.quoteColorSelect.value;
-        saveTextColorSettings();
-        applyTextColorSettings();
-      });
-      dom.boldColorSelect.addEventListener('change', () => {
-        state.textColors.bold = dom.boldColorSelect.value;
-        saveTextColorSettings();
-        applyTextColorSettings();
-      });
-
       dom.sendMessageBtn.addEventListener('click', () => sendChat(dom.messageInput.value));
       dom.messageInput.addEventListener('input', autoSizeComposer);
       dom.messageInput.addEventListener('keydown', (e) => {
@@ -2616,18 +2287,6 @@
       });
 
       dom.quickUploadSessionBtn.addEventListener('click', openSessionUploadModal);
-      dom.browseSessionFileBtn.addEventListener('click', () => dom.sessionFileInput.click());
-      dom.sessionFileInput.addEventListener('change', () => {
-        const file = dom.sessionFileInput.files && dom.sessionFileInput.files[0];
-        state.selectedSessionFile = file || null;
-        updateSessionFileLabel(file || null);
-        dom.sessionUploadError.textContent = '';
-      });
-      dom.loadSelectedSessionBtn.addEventListener('click', loadSelectedSessionFile);
-      dom.sessionFileInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') loadSelectedSessionFile();
-      });
-
       dom.openUploadBtn.addEventListener('click', openMediaModal);
       dom.uploadProfileQuickBtn.addEventListener('click', openMediaModal);
       dom.uploadSessionQuickBtn.addEventListener('click', openSessionUploadModal);
@@ -2660,7 +2319,7 @@
       dom.sendMusicUploadBtn.addEventListener('click', () => uploadImage('music'));
 
       dom.closeSessionUploadModal.addEventListener('click', () => closeOverlay(dom.sessionUploadModalOverlay));
-      dom.loadSelectedSessionBtn.addEventListener('click', loadSelectedSessionFile);
+      dom.beginSessionUploadBtn.addEventListener('click', beginSessionUpload);
       dom.sessionUploadModalOverlay.addEventListener('click', (e) => { if (e.target === dom.sessionUploadModalOverlay) closeOverlay(dom.sessionUploadModalOverlay); });
 
       dom.closeAiNamePrompt.addEventListener('click', () => {
@@ -2679,14 +2338,7 @@
       dom.setupPassword.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendSetupConfig(); });
 
       dom.commandChips.forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const command = btn.dataset.command || '';
-          if (command === '/load') {
-            openSessionUploadModal();
-            return;
-          }
-          sendChat(command);
-        });
+        btn.addEventListener('click', () => sendChat(btn.dataset.command || ''));
       });
 
       dom.musicPlayBtn.addEventListener('click', () => {
@@ -2770,7 +2422,6 @@
 
     function initialize() {
       loadLocalCredentials();
-      loadTextColorSettings();
       initEventHandlers();
       connectSocket();
       updateRoleVisibility();
@@ -2780,8 +2431,6 @@
       setConnection('Connecting');
       dom.musicAudio.volume = 1.0;
       dom.personaText.textContent = state.persona || '-';
-      applyTextColorSettings();
-      updateSessionFileLabel(null);
     }
 
     initialize();

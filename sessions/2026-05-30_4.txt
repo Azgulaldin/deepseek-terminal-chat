@@ -1,5 +1,0 @@
-Session started: 2026-05-30 18:48:42
-Username: Ad kun
-Persona: 
-
-[18:48:44] SYSTEM: Connected as user.

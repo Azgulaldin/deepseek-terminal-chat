@@ -131,39 +131,6 @@ def save_user_config(config: dict) -> None:
     PERSONA_FILE.write_text(json.dumps(config, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
-def list_local_session_files() -> list[dict]:
-    """Return all local session logs under sessions/ as relative paths."""
-    results: list[dict] = []
-    for path in sorted(SESSION_ROOT.rglob("*.txt")):
-        if not path.is_file():
-            continue
-        try:
-            rel = path.relative_to(SESSION_ROOT).as_posix()
-        except Exception:
-            continue
-        stat = path.stat()
-        results.append({
-            "name": path.name,
-            "path": rel,
-            "size": stat.st_size,
-            "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),
-        })
-    results.sort(key=lambda item: (item["modified"], item["path"]), reverse=True)
-    return results
-
-
-def resolve_session_path(filename: str) -> Path:
-    """Resolve a session file relative to SESSION_ROOT and keep it inside that tree."""
-    filepath = Path(filename).expanduser()
-    if not filepath.is_absolute():
-        filepath = SESSION_ROOT / filepath
-    filepath = filepath.resolve()
-    root = SESSION_ROOT.resolve()
-    if root not in filepath.parents and filepath != root:
-        raise ValueError("Invalid session path")
-    return filepath
-
-
 # ---------------------------------------------------------------------------
 # Shared relay state
 # ---------------------------------------------------------------------------
@@ -416,12 +383,9 @@ async def handle_upload_session_file(ws: aiohttp.web.WebSocketResponse, filename
         await safe_send(ws, {"type": "system", "message": "Usage: /upload <filename>"})
         return
 
-    try:
-        filepath = resolve_session_path(filename)
-    except Exception as e:
-        await safe_send(ws, {"type": "system", "message": str(e)})
-        return
-
+    filepath = Path(filename)
+    if not filepath.is_absolute():
+        filepath = SESSION_ROOT / filepath
     if not filepath.exists():
         await safe_send(ws, {"type": "system", "message": f"File not found: {filepath}"})
         return
@@ -595,17 +559,9 @@ async def index_handler(request: web.Request):
     return web.FileResponse(STATIC_DIR / "index.html")
 
 
-async def sessions_handler(request: web.Request):
-    return web.json_response({
-        "sessions": list_local_session_files(),
-        "count": len(list_local_session_files()),
-    })
-
-
 async def start_local_server():
     app = web.Application()
     app.router.add_get("/ws", local_ws_handler)
-    app.router.add_get("/sessions", sessions_handler)
     app.router.add_static("/static/", STATIC_DIR, show_index=False)
     app.router.add_get("/", index_handler)
 
