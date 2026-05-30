@@ -59,13 +59,6 @@ def safe_username(name: str) -> str:
     return name[:64] or "user"
 
 
-def safe_persona(persona: str) -> str:
-    persona = str(persona or "").strip()
-    persona = re.sub(r"[\x00-\x1f\x7f]+", " ", persona)
-    persona = re.sub(r"\s+", " ", persona)
-    return persona[:256]
-
-
 def safe_session_parts(session_id: str) -> List[str]:
     parts = [p for p in session_id.split("/") if p]
     if len(parts) != 4 or not all(p.isdigit() for p in parts):
@@ -95,7 +88,7 @@ def latest_existing_counter_for_day(day_dir: Path) -> int:
 # -------------------------------------------------------------------
 class AppState:
     def __init__(self) -> None:
-        self.clients: Dict[WebSocket, Dict[str, Any]] = {}
+        self.clients: Dict[WebSocket, Dict[str, str]] = {}
         self.ai_config: Dict[str, Any] = {
             "name": "DEEPSEEK",
             "behavior": "Helpful and intelligent.",
@@ -272,35 +265,7 @@ class AppState:
             "timestamp": datetime.utcnow().isoformat(),
         })
 
-    def get_online_participants(self) -> List[Dict[str, Any]]:
-        participants: List[Dict[str, Any]] = []
-        for info in self.clients.values():
-            participants.append({
-                "username": info.get("username", ""),
-                "role": info.get("role", "user"),
-                "persona": info.get("persona", ""),
-            })
-        participants.sort(key=lambda item: item["username"].lower())
-        return participants
-
-    def build_participant_context(self) -> str:
-        participants = self.get_online_participants()
-        if not participants:
-            return "No other participants are currently online."
-
-        lines = [f"Participant count: {len(participants)}", "Online participants:"]
-        for person in participants:
-            username = person.get("username") or "UNKNOWN"
-            role = person.get("role") or "user"
-            persona = person.get("persona") or ""
-            if persona:
-                lines.append(f"- {username} ({role}) — Persona: {persona}")
-            else:
-                lines.append(f"- {username} ({role}) — Persona: [not provided]")
-        return "\n".join(lines)
-
     def build_session_state(self) -> Dict[str, Any]:
-        participants = self.get_online_participants()
         return {
             "history": self.history,
             "ai_config": self.ai_config,
@@ -309,10 +274,7 @@ class AppState:
             "music_state": self.music_state,
             "profile_pics": self.profile_pics,
             "gallery": self.gallery,
-            "online_users": {info["username"]: info["role"] for info in participants},
-            "online_user_details": participants,
-            "online_user_personas": {info["username"]: info.get("persona", "") for info in participants},
-            "participant_count": len(participants),
+            "online_users": {info["username"]: info["role"] for info in self.clients.values()},
             "current_session_id": self.current_session_id,
         }
 
@@ -375,26 +337,13 @@ async def maybe_generate_ai_reply(username: str, message: str) -> None:
             reasoning_level = state.ai_config["reasoning_level"]
             show_reason = state.ai_config["show_reasoning"]
             recent = state.history[-20:]
-            participant_context = state.build_participant_context()
-            system_msg = (
-                f"You are {ai_name}. {behavior}\n\n"
-                f"{participant_context}\n\n"
-                "Use the participant information above when addressing users, tracking who is present, "
-                "and respecting each user's persona when relevant."
-            )
+            system_msg = f"You are {ai_name}. {behavior}"
             messages = [{"role": "system", "content": system_msg}]
             for h in recent:
                 role = h.get("role")
                 content = h.get("content", "")
-                sender = h.get("sender", "")
                 if role in ("user", "assistant"):
-                    if sender:
-                        messages.append({
-                            "role": role,
-                            "content": f"{sender}: {content}",
-                        })
-                    else:
-                        messages.append({"role": role, "content": content})
+                    messages.append({"role": role, "content": content})
 
         response = client.chat.completions.create(
             model=MODEL_NAME,
@@ -568,7 +517,6 @@ async def chat_endpoint(ws: WebSocket):
 
     username = str(join_data.get("username", "")).strip()
     password = str(join_data.get("password", "")).strip()
-    persona = safe_persona(join_data.get("persona", ""))
     if not username:
         await ws.send_text(json.dumps({"type": "join_response", "accepted": False, "reason": "Username required"}))
         await ws.close()
@@ -590,7 +538,7 @@ async def chat_endpoint(ws: WebSocket):
             is_admin = True
 
         role = "admin" if is_admin else "user"
-        state.clients[ws] = {"username": username, "role": role, "persona": persona}
+        state.clients[ws] = {"username": username, "role": role}
         state.ensure_active_session()
         setup_needed = not state.ai_config.get("configured", False) and is_admin and not state._setup_in_progress
         if setup_needed:
@@ -602,7 +550,6 @@ async def chat_endpoint(ws: WebSocket):
         "accepted": True,
         "role": role,
         "username": username,
-        "persona": persona,
     }))
 
     if setup_needed:
@@ -611,7 +558,7 @@ async def chat_endpoint(ws: WebSocket):
     await ws.send_text(json.dumps({"type": "system", "message": f"Connected as {role}."}))
     await ws.send_text(json.dumps({"type": "session_state", **state.build_session_state()}))
 
-    await broadcast({"type": "user_joined", "username": username, "role": role, "persona": persona}, exclude=ws)
+    await broadcast({"type": "user_joined", "username": username, "role": role}, exclude=ws)
     print(f"{username} connected as {role}.")
 
     try:
@@ -639,7 +586,7 @@ async def chat_endpoint(ws: WebSocket):
                 state.setup_owner = None
                 state._setup_in_progress = False
         if info:
-            await broadcast({"type": "user_left", "username": info["username"], "role": info.get("role", "user"), "persona": info.get("persona", "")})
+            await broadcast({"type": "user_left", "username": info["username"]})
 
 
 # -------------------------------------------------------------------

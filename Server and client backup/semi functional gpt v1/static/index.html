@@ -864,10 +864,6 @@
                 <label for="loginPassword">Password</label>
                 <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Password if required" />
               </div>
-              <div class="field">
-                <label for="loginPersona">Persona</label>
-                <input id="loginPersona" type="text" autocomplete="off" placeholder="Describe your user persona" />
-              </div>
               <div class="toggle-row">
                 <label class="toggle"><input id="rememberPassword" type="checkbox" /> Remember password locally</label>
                 <span id="loginModeHint">Local relay will connect to the server</span>
@@ -1299,7 +1295,6 @@
 
       loginUsername: $('loginUsername'),
       loginPassword: $('loginPassword'),
-      loginPersona: $('loginPersona'),
       rememberPassword: $('rememberPassword'),
       loginButton: $('loginButton'),
       loginError: $('loginError'),
@@ -1416,7 +1411,6 @@
       connecting: false,
       username: '',
       password: '',
-      persona: '',
       rememberPassword: false,
       role: 'user',
       isAdmin: false,
@@ -1475,7 +1469,6 @@
 
     function saveLocalCredentials() {
       localStorage.setItem('dr_username', dom.loginUsername.value.trim());
-      localStorage.setItem('dr_persona', dom.loginPersona.value.trim());
       if (dom.rememberPassword.checked) {
         localStorage.setItem('dr_password', dom.loginPassword.value);
         localStorage.setItem('dr_remember', '1');
@@ -1487,12 +1480,10 @@
 
     function loadLocalCredentials() {
       dom.loginUsername.value = localStorage.getItem('dr_username') || '';
-      dom.loginPersona.value = localStorage.getItem('dr_persona') || '';
       dom.loginPassword.value = localStorage.getItem('dr_password') || '';
       dom.rememberPassword.checked = localStorage.getItem('dr_remember') === '1';
       dom.loginModeHint.textContent = 'Local relay will connect to the server';
       state.username = dom.loginUsername.value.trim();
-      state.persona = dom.loginPersona.value.trim();
       state.password = dom.loginPassword.value;
       state.rememberPassword = dom.rememberPassword.checked;
     }
@@ -1736,7 +1727,7 @@
         admin_username: cfg.admin_username ?? null,
       };
       dom.aiNamePill.textContent = `AI: ${state.aiConfig.name}`;
-      dom.personaText.textContent = state.persona || '-';
+      dom.personaText.textContent = `${state.aiConfig.name} · ${state.aiConfig.reasoning_level}`;
       dom.settingsBadge.textContent = state.aiConfig.show_reasoning ? 'reasoning on' : 'reasoning off';
       if (state.username && state.aiConfig.admin_username === state.username) state.isAdmin = true;
       dom.aiNameInput.value = state.aiConfig.name || '';
@@ -1756,7 +1747,6 @@
       dom.openMediaButton.textContent = admin ? 'Media uploads' : 'Media uploads';
       dom.backgroundText.textContent = state.backgroundUrl ? 'Active' : 'None';
       dom.musicText.textContent = state.music.url ? 'Loaded' : 'None';
-      dom.personaText.textContent = state.persona || '-';
 
       // Admin-only controls are still visible in the modal, but disabled for non-admin users.
       dom.backgroundFileInput.disabled = !admin;
@@ -1782,11 +1772,6 @@
 
       if (data.ai_config) applyAiConfig(data.ai_config);
       if (data.admin_username && data.admin_username === state.username) state.isAdmin = true;
-      if (data.persona) state.persona = data.persona;
-      if (data.online_user_personas && state.username && data.online_user_personas[state.username]) {
-        state.persona = data.online_user_personas[state.username];
-      }
-      dom.personaText.textContent = state.persona || '-';
       if (typeof data.background_url !== 'undefined') setBackground(data.background_url || '');
       if (data.music_state) syncMusic(data.music_state);
       if (data.profile_pics) {
@@ -1894,7 +1879,6 @@
     function login() {
       const username = dom.loginUsername.value.trim();
       const password = dom.loginPassword.value;
-      const persona = dom.loginPersona.value.trim();
       const remember_password = dom.rememberPassword.checked;
       dom.loginError.textContent = '';
 
@@ -1904,7 +1888,6 @@
       }
 
       state.username = username;
-      state.persona = persona;
       state.password = password;
       state.rememberPassword = remember_password;
       saveLocalCredentials();
@@ -1913,7 +1896,7 @@
       const timer = setInterval(() => {
         if (state.ws && state.ws.readyState === WebSocket.OPEN) {
           clearInterval(timer);
-          send({ type: 'login', username, persona, password, remember_password });
+          send({ type: 'login', username, password, remember_password });
           setConnection('Authorizing');
         }
       }, 50);
@@ -1924,7 +1907,6 @@
     function logout() {
       state.username = '';
       state.password = '';
-      state.persona = '';
       state.rememberPassword = false;
       state.role = 'user';
       state.isAdmin = false;
@@ -1953,7 +1935,6 @@
       state.ws = null;
       dom.loginPassword.value = localStorage.getItem('dr_remember') === '1' ? (localStorage.getItem('dr_password') || '') : '';
       dom.loginUsername.value = localStorage.getItem('dr_username') || '';
-      dom.loginPersona.value = localStorage.getItem('dr_persona') || '';
       dom.loginError.textContent = '';
       clearMessages();
       setBackground('');
@@ -1975,10 +1956,7 @@
           }
           state.role = data.role || 'user';
           state.isAdmin = state.role === 'admin';
-          if (data.persona) state.persona = data.persona;
           dom.roleText.textContent = state.role;
-          if (data.persona) state.persona = data.persona;
-          dom.personaText.textContent = state.persona || '-';
           dom.roomSubtitle.textContent = `Connected as ${data.username || state.username}`;
           dom.roomTitle.textContent = `DeepSeek Roleplay · ${data.username || state.username}`;
           showApp();
@@ -1988,9 +1966,7 @@
         case 'login_accepted':
           state.role = data.role || state.role;
           state.isAdmin = state.role === 'admin';
-          if (data.persona) state.persona = data.persona;
           dom.roleText.textContent = state.role;
-          dom.personaText.textContent = state.persona || '-';
           dom.roomSubtitle.textContent = `Connected as ${data.username || state.username}`;
           dom.roomTitle.textContent = `DeepSeek Roleplay · ${data.username || state.username}`;
           showApp();
@@ -2264,7 +2240,6 @@
       dom.loginButton.addEventListener('click', login);
       dom.loginPassword.addEventListener('keydown', (e) => { if (e.key === 'Enter') login(); });
       dom.loginUsername.addEventListener('keydown', (e) => { if (e.key === 'Enter') login(); });
-      dom.loginPersona.addEventListener('keydown', (e) => { if (e.key === 'Enter') login(); });
       dom.rememberPassword.addEventListener('change', () => {
         state.rememberPassword = dom.rememberPassword.checked;
         saveLocalCredentials();
@@ -2343,15 +2318,10 @@
 
       dom.musicPlayBtn.addEventListener('click', () => {
         if (!state.music.url) return;
-        const willPlay = dom.musicAudio.paused;
-        if (willPlay) {
-          dom.musicAudio.play().catch(() => {});
-        } else {
-          dom.musicAudio.pause();
-        }
+        const action = dom.musicAudio.paused ? 'play' : 'pause';
         send({
           type: 'music_control',
-          action: willPlay ? 'play' : 'pause',
+          action,
           currentTime: dom.musicAudio.currentTime || 0,
           loop: state.music.loop,
         });
@@ -2359,14 +2329,10 @@
 
       dom.musicLoopBtn.addEventListener('click', () => {
         if (!state.music.url) return;
-        const nextLoop = !state.music.loop;
-        dom.musicAudio.loop = nextLoop;
-        state.music.loop = nextLoop;
-        updateMusicControls();
         send({
           type: 'music_control',
           action: 'loop',
-          loop: nextLoop,
+          loop: !state.music.loop,
           currentTime: dom.musicAudio.currentTime || 0,
         });
       });
@@ -2430,7 +2396,6 @@
       renderGallery();
       setConnection('Connecting');
       dom.musicAudio.volume = 1.0;
-      dom.personaText.textContent = state.persona || '-';
     }
 
     initialize();

@@ -143,7 +143,6 @@ class RelayState:
     logger: Optional[SessionLogger] = None
     username: str = ""
     password: str = ""
-    persona: str = ""
     remember_password: bool = False
     role: str = "user"
     authenticated: bool = False
@@ -193,7 +192,6 @@ async def send_initial_state(ws: aiohttp.web.WebSocketResponse) -> None:
             "type": "login_accepted",
             "username": state.username,
             "role": state.role,
-            "persona": state.persona,
         })
         if state.last_session_state:
             await safe_send(ws, {"type": "session_state", **state.last_session_state})
@@ -222,7 +220,7 @@ async def close_remote() -> None:
 # ---------------------------------------------------------------------------
 # Remote connection handling
 # ---------------------------------------------------------------------------
-async def connect_remote(username: str, password: str, persona: str = "") -> bool:
+async def connect_remote(username: str, password: str) -> bool:
     if state.connecting:
         return False
     state.connecting = True
@@ -232,7 +230,6 @@ async def connect_remote(username: str, password: str, persona: str = "") -> boo
             "type": "join_request",
             "username": username,
             "password": password,
-            "persona": persona,
         }))
         raw = await ws.recv()
         resp = json.loads(raw)
@@ -248,7 +245,6 @@ async def connect_remote(username: str, password: str, persona: str = "") -> boo
 
         state.remote_ws = ws
         state.role = resp.get("role", "user")
-        state.persona = persona
         state.authenticated = True
 
         server_info = {
@@ -261,10 +257,10 @@ async def connect_remote(username: str, password: str, persona: str = "") -> boo
             "type": "login_accepted",
             "username": username,
             "role": state.role,
-            "persona": state.persona,
         })
         if state.logger is None:
-            state.logger = SessionLogger(username, state.persona)
+            persona = load_user_config().get("persona", "")
+            state.logger = SessionLogger(username, persona)
             state.logger.start()
         await broadcast_local({
             "type": "system",
@@ -296,7 +292,7 @@ async def reconnect_remote() -> bool:
         await asyncio.sleep(3)
         if state.shutdown or not state.username:
             return
-        ok = await connect_remote(state.username, state.password, state.persona)
+        ok = await connect_remote(state.username, state.password)
         if not ok and not state.shutdown:
             await broadcast_local({"type": "system", "message": "Still trying to reconnect..."})
 
@@ -461,17 +457,13 @@ async def handle_local_message(ws: aiohttp.web.WebSocketResponse, raw: str) -> N
     if msg_type == "login":
         username = str(data.get("username", "")).strip()
         password = str(data.get("password", ""))
-        persona = str(data.get("persona", "")).strip()
         remember_password = bool(data.get("remember_password", False))
         if not username:
             await safe_send(ws, {"type": "login_failed", "reason": "Username required"})
             return
 
         config = load_user_config()
-        if not persona:
-            persona = str(config.get("persona", "")).strip()
         config["username"] = username
-        config["persona"] = persona
         if remember_password:
             config["password"] = password
         else:
@@ -480,15 +472,14 @@ async def handle_local_message(ws: aiohttp.web.WebSocketResponse, raw: str) -> N
 
         state.username = username
         state.password = password if remember_password else password
-        state.persona = persona
         state.remember_password = remember_password
-        state.logger = SessionLogger(username, persona)
+        state.logger = SessionLogger(username, config.get("persona", ""))
         state.logger.start()
 
         if state.remote_ws is not None:
             await close_remote()
 
-        ok = await connect_remote(username, password, persona)
+        ok = await connect_remote(username, password)
         if not ok:
             return
         return
@@ -544,7 +535,6 @@ async def local_ws_handler(request: web.Request) -> web.WebSocketResponse:
             state.authenticated = False
             state.username = ""
             state.password = ""
-            state.persona = ""
             state.logger = None
             state.last_session_state = None
             state.last_server_info = None
