@@ -1,892 +1,2200 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="dark" />
   <title>DeepSeek Roleplay</title>
   <style>
-    /* ---------- Modern Dark Theme with Glassmorphism ---------- */
     :root {
-      --bg: #0a0a1a;
-      --glass: rgba(20, 20, 40, 0.85);
-      --glass-border: rgba(255, 255, 255, 0.1);
-      --neon: #b76eff;
-      --neon2: #ff6ec7;
-      --text: #e0e0f0;
-      --user-bubble: #2a2a4a;
-      --ai-bubble: #1e1e3a;
-      --system-color: #888;
-      --online: #4caf50;
-      --offline: #f44336;
-      --radius: 16px;
-      --shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-      --transition: all 0.3s ease;
+      --bg0: #090912;
+      --bg1: rgba(10, 10, 22, 0.72);
+      --bg2: rgba(255, 255, 255, 0.06);
+      --stroke: rgba(255, 255, 255, 0.10);
+      --stroke-2: rgba(255, 255, 255, 0.16);
+      --text: #eef0ff;
+      --muted: #a7acc7;
+      --subtle: #7c81a1;
+      --accent: #b66cff;
+      --accent-2: #ff6dc6;
+      --good: #4cd58a;
+      --warn: #ffbb55;
+      --bad: #ff6b6b;
+      --shadow: 0 24px 60px rgba(0, 0, 0, 0.42);
+      --radius-xl: 28px;
+      --radius-lg: 20px;
+      --radius-md: 14px;
+      --radius-sm: 10px;
+      --sidebar-w: 290px;
+      --topbar-h: 64px;
+      --composer-h: 88px;
+      --transition: 180ms ease;
     }
 
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
     body {
-      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-      background: var(--bg);
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       color: var(--text);
-      height: 100vh;
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
+      background:
+        linear-gradient(135deg, rgba(7, 7, 18, 0.92), rgba(10, 10, 24, 0.82)),
+        radial-gradient(circle at top left, rgba(182, 108, 255, 0.24), transparent 28%),
+        radial-gradient(circle at top right, rgba(255, 109, 198, 0.18), transparent 24%),
+        linear-gradient(180deg, #0b0b16, #090912);
       background-size: cover;
       background-position: center;
-      transition: background-image 0.8s ease;
+      background-attachment: fixed;
+      overflow: hidden;
     }
 
-    /* Animated gradient background fallback */
     body::before {
       content: "";
       position: fixed;
-      top: 0; left: 0; width: 100%; height: 100%;
-      background: linear-gradient(45deg, #0f0c29, #302b63, #24243e);
-      background-size: 400% 400%;
-      animation: gradientShift 15s ease infinite;
-      z-index: -2;
-    }
-    body::after {
-      content: "";
-      position: fixed;
-      top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0,0,0,0.3);
-      z-index: -1;
-    }
-    @keyframes gradientShift {
-      0% { background-position: 0% 50%; }
-      50% { background-position: 100% 50%; }
-      100% { background-position: 0% 50%; }
+      inset: 0;
+      pointer-events: none;
+      background:
+        linear-gradient(115deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.0) 20%, rgba(255,255,255,0.03) 40%, rgba(255,255,255,0.0) 60%, rgba(255,255,255,0.02) 80%, rgba(255,255,255,0.0) 100%);
+      opacity: 0.25;
+      mix-blend-mode: screen;
     }
 
-    /* ---------- Login Overlay ---------- */
-    #login-overlay {
-      position: fixed;
-      inset: 0;
+    button, input, textarea, select { font: inherit; }
+    button { cursor: pointer; }
+    a { color: inherit; }
+
+    .shell {
+      height: 100vh;
+      display: grid;
+      grid-template-columns: var(--sidebar-w) 1fr 320px;
+      gap: 0;
+      position: relative;
+    }
+
+    .panel {
+      background: var(--bg1);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      border-right: 1px solid var(--stroke);
+      box-shadow: var(--shadow);
+      min-width: 0;
+    }
+
+    .panel-right { border-right: 0; border-left: 1px solid var(--stroke); }
+
+    .sidebar, .rightbar {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .sidebar-header, .rightbar-header, .topbar {
+      height: var(--topbar-h);
       display: flex;
       align-items: center;
-      justify-content: center;
-      background: rgba(0,0,0,0.7);
-      backdrop-filter: blur(10px);
-      z-index: 1000;
+      gap: 12px;
+      padding: 0 18px;
+      border-bottom: 1px solid var(--stroke);
+      flex: 0 0 auto;
     }
-    .login-card {
-      background: var(--glass);
-      border: 1px solid var(--glass-border);
-      backdrop-filter: blur(20px);
-      border-radius: 20px;
-      padding: 2.5rem;
-      width: 90%;
-      max-width: 400px;
-      box-shadow: var(--shadow);
-      text-align: center;
+
+    .brand-mark {
+      width: 38px;
+      height: 38px;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(135deg, rgba(182,108,255,0.24), rgba(255,109,198,0.18));
+      border: 1px solid rgba(255,255,255,0.12);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+      font-size: 18px;
     }
-    .login-card h1 {
-      font-size: 2rem;
-      margin-bottom: 0.5rem;
-      background: linear-gradient(135deg, var(--neon), var(--neon2));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
+
+    .title-group {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
     }
-    .login-card input {
-      width: 100%;
-      margin: 0.8rem 0;
-      padding: 12px 15px;
-      background: rgba(255,255,255,0.05);
-      border: 1px solid var(--glass-border);
-      border-radius: 10px;
+
+    .title-group strong {
+      font-size: 14px;
+      line-height: 1.1;
+      letter-spacing: 0.2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .title-group span, .meta-line, .small-note {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .topbar {
+      justify-content: space-between;
+      padding-right: 14px;
+    }
+
+    .topbar-left, .topbar-right, .action-row, .inline-row, .status-chip-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid var(--stroke);
       color: var(--text);
-      font-size: 1rem;
-      outline: none;
-      transition: var(--transition);
+      font-size: 12px;
+      white-space: nowrap;
+      user-select: none;
     }
-    .login-card input:focus {
-      border-color: var(--neon);
-      box-shadow: 0 0 10px rgba(183,110,255,0.3);
+
+    .status-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--warn);
+      box-shadow: 0 0 0 4px rgba(255,187,85,0.12);
+      flex: 0 0 auto;
     }
-    .login-card label {
+    .status-dot.ok { background: var(--good); box-shadow: 0 0 0 4px rgba(76,213,138,0.12); }
+    .status-dot.bad { background: var(--bad); box-shadow: 0 0 0 4px rgba(255,107,107,0.12); }
+
+    .icon-btn, .secondary-btn, .primary-btn, .ghost-btn {
+      border: 1px solid var(--stroke);
+      background: rgba(255,255,255,0.05);
+      color: var(--text);
+      border-radius: 12px;
+      transition: transform var(--transition), background var(--transition), border-color var(--transition), opacity var(--transition);
+    }
+    .icon-btn:hover, .secondary-btn:hover, .primary-btn:hover, .ghost-btn:hover {
+      transform: translateY(-1px);
+      border-color: var(--stroke-2);
+      background: rgba(255,255,255,0.08);
+    }
+    .icon-btn { width: 40px; height: 40px; display: grid; place-items: center; font-size: 18px; }
+    .secondary-btn, .primary-btn, .ghost-btn {
+      height: 42px;
+      padding: 0 14px;
+      font-weight: 600;
+    }
+    .primary-btn {
+      background: linear-gradient(135deg, rgba(182,108,255,0.96), rgba(255,109,198,0.92));
+      border-color: transparent;
+      box-shadow: 0 10px 24px rgba(182,108,255,0.28);
+    }
+    .primary-btn:hover { background: linear-gradient(135deg, rgba(190,120,255,0.98), rgba(255,122,203,0.96)); }
+    .ghost-btn { background: transparent; }
+
+    .content {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      background: rgba(4, 4, 12, 0.12);
+      position: relative;
+    }
+
+    .chat-stage {
+      min-height: 0;
+      overflow: hidden;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .chat-stage::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: radial-gradient(circle at center top, rgba(255,255,255,0.05), transparent 42%);
+      opacity: 0.55;
+    }
+
+    .messages {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      padding: 18px 18px 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      scroll-behavior: smooth;
+    }
+
+    .messages::-webkit-scrollbar, .list::-webkit-scrollbar, .drawer-body::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+    .messages::-webkit-scrollbar-thumb, .list::-webkit-scrollbar-thumb, .drawer-body::-webkit-scrollbar-thumb {
+      background: rgba(255,255,255,0.12);
+      border-radius: 999px;
+      border: 2px solid transparent;
+      background-clip: padding-box;
+    }
+
+    .message-row {
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+      max-width: 100%;
+    }
+    .message-row.self { justify-content: flex-end; }
+    .message-row.system { justify-content: center; }
+    .message-row.replay { opacity: 0.76; }
+
+    .avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      flex: 0 0 auto;
+      object-fit: cover;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.06);
+      box-shadow: 0 6px 18px rgba(0,0,0,0.18);
+    }
+    .avatar.big { width: 44px; height: 44px; }
+
+    .bubble-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      max-width: min(760px, 100%);
+    }
+
+    .sender-line {
       display: flex;
       align-items: center;
       gap: 8px;
-      font-size: 0.9rem;
-      color: #aaa;
-      margin: 0.5rem 0;
+      font-size: 12px;
+      color: var(--muted);
+      padding: 0 8px;
     }
-    .btn {
-      background: linear-gradient(135deg, var(--neon), var(--neon2));
-      border: none;
-      color: white;
-      padding: 12px 24px;
-      border-radius: 30px;
-      font-weight: bold;
-      cursor: pointer;
-      transition: var(--transition);
-      box-shadow: 0 4px 15px rgba(183,110,255,0.4);
-      margin-top: 1rem;
-    }
-    .btn:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 6px 25px rgba(183,110,255,0.6);
+    .sender-line strong { color: var(--text); font-weight: 700; }
+    .sender-line .role-tag {
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--stroke);
+      background: rgba(255,255,255,0.04);
+      font-size: 11px;
     }
 
-    /* ---------- Main Layout ---------- */
-    #main-app {
+    .bubble {
+      max-width: 100%;
+      padding: 12px 14px;
+      border-radius: 18px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.08);
+      box-shadow: 0 10px 26px rgba(0,0,0,0.16);
+      white-space: pre-wrap;
+      word-break: break-word;
+      line-height: 1.55;
+      position: relative;
+    }
+
+    .message-row.self .bubble {
+      background: linear-gradient(135deg, rgba(182,108,255,0.30), rgba(255,109,198,0.18));
+      border-color: rgba(182,108,255,0.18);
+    }
+
+    .message-row.system .bubble {
+      background: rgba(255,255,255,0.04);
+      border-color: rgba(255,255,255,0.06);
+      color: var(--muted);
+      text-align: center;
+      font-style: italic;
+      padding: 10px 14px;
+    }
+
+    .message-row.assistant .bubble {
+      background: rgba(255,255,255,0.07);
+    }
+
+    .meta-row {
       display: flex;
-      height: 100vh;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      color: var(--subtle);
+      padding: 0 8px;
+    }
+
+    .message-row.self .meta-row { justify-content: flex-end; }
+
+    .reasoning-card {
+      margin-top: 6px;
+      border-radius: 16px;
+      border: 1px solid rgba(182,108,255,0.18);
+      background: rgba(182,108,255,0.08);
       overflow: hidden;
     }
-    .sidebar {
-      width: 260px;
-      background: var(--glass);
-      backdrop-filter: blur(15px);
-      border-right: 1px solid var(--glass-border);
+
+    .reasoning-card summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 10px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      color: var(--text);
+      font-weight: 600;
+    }
+    .reasoning-card summary::-webkit-details-marker { display: none; }
+    .reasoning-card .reasoning-body {
+      padding: 0 12px 12px;
+      color: #d9d5ff;
+      white-space: pre-wrap;
+      line-height: 1.6;
+      font-size: 13px;
+    }
+
+    .composer-wrap {
+      padding: 14px 18px 18px;
+      border-top: 1px solid var(--stroke);
+      background: linear-gradient(180deg, rgba(10, 10, 22, 0.12), rgba(10, 10, 22, 0.52));
+    }
+
+    .composer {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 10px;
+      align-items: end;
+      padding: 12px;
+      border-radius: 24px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.08);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+    }
+
+    .composer .cmd-chip {
+      height: 44px;
+      width: 44px;
+      padding: 0;
+      border-radius: 14px;
+      display: grid;
+      place-items: center;
+      font-size: 18px;
+    }
+
+    .composer textarea {
+      width: 100%;
+      resize: none;
+      min-height: 44px;
+      max-height: 150px;
+      border: 0;
+      outline: none;
+      color: var(--text);
+      background: transparent;
+      padding: 11px 6px;
+      line-height: 1.45;
+    }
+    .composer textarea::placeholder { color: var(--subtle); }
+
+    .composer-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .sidebar-section, .right-section {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--stroke);
+    }
+    .section-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .section-title h3 {
+      font-size: 13px;
+      margin: 0;
+      letter-spacing: 0.3px;
+      color: var(--text);
+    }
+    .section-title span { font-size: 12px; color: var(--subtle); }
+
+    .list {
       display: flex;
       flex-direction: column;
-      padding: 1rem;
-      overflow-y: auto;
-      transition: transform 0.3s ease;
+      gap: 8px;
+      max-height: calc(100vh - 170px);
+      overflow: auto;
+      padding-right: 2px;
     }
-    .sidebar h3 {
-      text-align: center;
-      margin-bottom: 1rem;
-      color: var(--neon);
-    }
-    .user-list {
-      list-style: none;
-      flex: 1;
-    }
+
     .user-item {
       display: flex;
       align-items: center;
       gap: 10px;
-      padding: 0.5rem;
-      border-radius: 8px;
-      margin-bottom: 0.3rem;
-      transition: background 0.2s;
+      padding: 10px 12px;
+      border-radius: 16px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.05);
     }
-    .user-item:hover {
-      background: rgba(255,255,255,0.05);
+    .user-item.me {
+      border-color: rgba(182,108,255,0.2);
+      background: rgba(182,108,255,0.08);
     }
-    .profile-pic-small {
-      width: 32px;
-      height: 32px;
-      border-radius: 50%;
-      object-fit: cover;
-      border: 2px solid var(--neon);
-    }
-    .online-dot {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background: var(--online);
-      margin-right: 5px;
-    }
-    .offline-dot {
-      background: var(--offline);
-    }
-    .main-area {
-      flex: 1;
+
+    .user-name {
       display: flex;
       flex-direction: column;
-      position: relative;
-    }
-    .chat-messages {
+      min-width: 0;
       flex: 1;
-      overflow-y: auto;
-      padding: 1.5rem;
-      display: flex;
-      flex-direction: column;
-      gap: 1rem;
     }
-    .message {
-      display: flex;
+    .user-name strong {
+      font-size: 13px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .user-name small { color: var(--muted); font-size: 11px; }
+
+    .role-pill {
+      font-size: 11px;
+      color: var(--muted);
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--stroke);
+      background: rgba(255,255,255,0.03);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+    }
+
+    .mini-stat {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0,1fr));
       gap: 10px;
-      animation: fadeInUp 0.3s ease;
     }
-    .message.user {
-      justify-content: flex-end;
+    .stat-card {
+      border-radius: 18px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.06);
+      padding: 12px;
     }
-    .message .bubble {
-      max-width: 70%;
-      padding: 12px 18px;
-      border-radius: 20px;
-      line-height: 1.5;
-      position: relative;
-      word-wrap: break-word;
+    .stat-card span { display: block; font-size: 11px; color: var(--subtle); margin-bottom: 6px; }
+    .stat-card strong { font-size: 14px; }
+
+    .stack {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
     }
-    .message.user .bubble {
-      background: linear-gradient(135deg, #4b6cb7, #182848);
-      border-bottom-right-radius: 5px;
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
     }
-    .message.assistant .bubble {
-      background: rgba(255,255,255,0.08);
-      border-bottom-left-radius: 5px;
+    .field label {
+      font-size: 12px;
+      color: var(--muted);
     }
-    .message.system .bubble {
-      background: transparent;
-      color: var(--system-color);
-      text-align: center;
+    .field input, .field textarea, .field select {
       width: 100%;
-      font-style: italic;
+      padding: 12px 13px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.05);
+      color: var(--text);
+      outline: none;
     }
-    .message .sender-name {
-      font-size: 0.8rem;
-      color: var(--neon);
-      margin-bottom: 4px;
+    .field textarea { min-height: 92px; resize: vertical; }
+    .field input:focus, .field textarea:focus, .field select:focus {
+      border-color: rgba(182,108,255,0.34);
+      box-shadow: 0 0 0 3px rgba(182,108,255,0.14);
+    }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .toggle input { accent-color: var(--accent); }
+
+    .chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip {
+      border: 1px solid var(--stroke);
+      background: rgba(255,255,255,0.04);
+      color: var(--text);
+      border-radius: 999px;
+      padding: 8px 12px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .chip:hover { background: rgba(255,255,255,0.08); }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .gallery-drawer {
+      position: fixed;
+      inset: auto 0 0 0;
+      transform: translateY(100%);
+      transition: transform 220ms ease;
+      z-index: 80;
+      background: rgba(8, 8, 18, 0.88);
+      backdrop-filter: blur(20px);
+      border-top: 1px solid var(--stroke);
+      box-shadow: var(--shadow);
+      max-height: 42vh;
+    }
+    .gallery-drawer.open { transform: translateY(0); }
+    .gallery-head {
+      height: 58px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 18px;
+      border-bottom: 1px solid var(--stroke);
+    }
+    .gallery-grid {
+      padding: 14px 18px 18px;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 12px;
+      overflow: auto;
+      max-height: calc(42vh - 58px);
+    }
+    .thumb {
+      position: relative;
+      aspect-ratio: 1/1;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.03);
+      box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+    }
+    .thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
       display: block;
     }
-    .profile-pic-msg {
-      width: 36px;
-      height: 36px;
-      border-radius: 50%;
-      object-fit: cover;
-      border: 2px solid var(--neon2);
-      align-self: flex-start;
-    }
-    .reasoning-box {
-      background: rgba(255,255,255,0.05);
-      border-left: 3px solid var(--neon);
-      padding: 10px;
-      margin: 10px 0;
-      font-size: 0.9rem;
-      color: #aaa;
-      border-radius: 8px;
-      animation: fadeIn 0.5s;
-    }
-    .input-container {
-      padding: 1rem;
-      background: var(--glass);
-      backdrop-filter: blur(15px);
-      display: flex;
-      gap: 10px;
-      border-top: 1px solid var(--glass-border);
-    }
-    .input-container input {
-      flex: 1;
-      padding: 12px 20px;
-      background: rgba(255,255,255,0.05);
-      border: 1px solid var(--glass-border);
-      border-radius: 30px;
-      color: var(--text);
-      font-size: 1rem;
-      outline: none;
-      transition: var(--transition);
-    }
-    .input-container input:focus {
-      border-color: var(--neon);
-    }
-    .input-container button {
-      background: var(--neon);
-      border: none;
-      border-radius: 50%;
-      width: 46px;
-      height: 46px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      transition: var(--transition);
-      font-size: 1.2rem;
-    }
-    .input-container button:hover {
-      background: var(--neon2);
+    .thumb .caption {
+      position: absolute;
+      left: 0; right: 0; bottom: 0;
+      padding: 8px 8px 7px;
+      background: linear-gradient(180deg, transparent, rgba(0,0,0,0.72));
+      color: #fff;
+      font-size: 11px;
+      line-height: 1.2;
     }
 
-    /* Music player */
-    .music-bar {
-      padding: 10px 20px;
-      background: rgba(10,10,30,0.9);
-      backdrop-filter: blur(10px);
-      display: flex;
-      align-items: center;
-      gap: 15px;
-      border-bottom: 1px solid var(--glass-border);
-      font-size: 0.9rem;
-    }
-    .music-bar audio { display: none; }
-    .music-controls button {
-      background: transparent;
-      border: 1px solid var(--neon);
-      color: var(--neon);
-      border-radius: 50%;
-      width: 30px;
-      height: 30px;
-      cursor: pointer;
-      transition: var(--transition);
-    }
-    .music-controls button:hover {
-      background: var(--neon);
-      color: white;
-    }
-    .progress-container {
-      flex: 1;
-      height: 5px;
-      background: rgba(255,255,255,0.1);
-      border-radius: 5px;
-      cursor: pointer;
-      position: relative;
-    }
-    .progress-fill {
-      height: 100%;
-      width: 0%;
-      background: var(--neon);
-      border-radius: 5px;
-    }
-    .gallery-toggle {
-      background: var(--neon2);
-      border: none;
-      color: white;
-      padding: 5px 15px;
-      border-radius: 20px;
-      cursor: pointer;
-    }
-    .gallery-panel {
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      background: var(--glass);
-      backdrop-filter: blur(20px);
-      border-top: 1px solid var(--glass-border);
-      display: flex;
-      overflow-x: auto;
-      gap: 10px;
-      padding: 10px;
-      transition: transform 0.3s ease;
-      transform: translateY(100%);
-    }
-    .gallery-panel.open {
-      transform: translateY(0);
-    }
-    .gallery-panel img {
-      height: 60px;
-      border-radius: 8px;
-      cursor: pointer;
-      object-fit: cover;
-      transition: transform 0.2s;
-    }
-    .gallery-panel img:hover {
-      transform: scale(1.1);
-    }
-
-    /* Modals */
-    .modal {
+    .modal-overlay {
       position: fixed;
       inset: 0;
-      background: rgba(0,0,0,0.8);
-      display: flex;
+      z-index: 120;
+      display: none;
       align-items: center;
       justify-content: center;
-      z-index: 2000;
-      visibility: hidden;
-      opacity: 0;
-      transition: visibility 0.3s, opacity 0.3s;
+      padding: 18px;
+      background: rgba(0,0,0,0.68);
+      backdrop-filter: blur(10px);
     }
-    .modal.active {
-      visibility: visible;
-      opacity: 1;
-    }
-    .modal-content {
-      background: var(--glass);
-      backdrop-filter: blur(25px);
-      border: 1px solid var(--glass-border);
-      border-radius: 20px;
-      padding: 2rem;
-      width: 90%;
-      max-width: 500px;
+    .modal-overlay.show { display: flex; }
+
+    .modal {
+      width: min(760px, 100%);
+      max-height: min(92vh, 860px);
+      overflow: hidden;
+      border-radius: 28px;
+      background: rgba(12, 12, 24, 0.95);
+      border: 1px solid rgba(255,255,255,0.10);
       box-shadow: var(--shadow);
+      display: grid;
+      grid-template-rows: auto 1fr;
     }
-    .modal-content h3 {
-      margin-bottom: 1rem;
-      color: var(--neon);
+    .modal.wide { width: min(980px, 100%); }
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--stroke);
     }
-    .modal-content input, .modal-content select {
-      width: 100%;
-      padding: 10px;
-      margin: 0.5rem 0;
-      background: rgba(255,255,255,0.05);
-      border: 1px solid var(--glass-border);
-      border-radius: 8px;
-      color: var(--text);
+    .modal-header h2 {
+      margin: 0;
+      font-size: 18px;
     }
-    .close-btn {
-      float: right;
-      background: none;
-      border: none;
-      color: var(--text);
-      font-size: 1.5rem;
-      cursor: pointer;
+    .modal-body {
+      padding: 18px;
+      overflow: auto;
+    }
+    .modal-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .modal-grid.single { grid-template-columns: 1fr; }
+
+    .footer-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 16px;
+      flex-wrap: wrap;
     }
 
-    @keyframes fadeInUp {
-      from { opacity: 0; transform: translateY(20px); }
-      to { opacity: 1; transform: translateY(0); }
+    .login-screen, .setup-screen {
+      position: fixed;
+      inset: 0;
+      z-index: 200;
+      display: grid;
+      place-items: center;
+      padding: 18px;
+      background:
+        radial-gradient(circle at top left, rgba(182,108,255,0.20), transparent 30%),
+        radial-gradient(circle at top right, rgba(255,109,198,0.16), transparent 28%),
+        rgba(0,0,0,0.70);
+      backdrop-filter: blur(12px);
     }
-    @keyframes fadeIn {
-      from { opacity: 0; } to { opacity: 1; }
+    .setup-screen { z-index: 210; }
+
+    .card {
+      width: min(720px, 100%);
+      border-radius: 30px;
+      background: rgba(12, 12, 22, 0.92);
+      border: 1px solid rgba(255,255,255,0.10);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .card-body {
+      padding: 22px;
+    }
+    .hero {
+      display: grid;
+      grid-template-columns: 110px 1fr;
+      gap: 18px;
+      align-items: center;
+      margin-bottom: 18px;
+    }
+    .hero-mark {
+      width: 110px;
+      height: 110px;
+      border-radius: 28px;
+      display: grid;
+      place-items: center;
+      font-size: 44px;
+      background: linear-gradient(135deg, rgba(182,108,255,0.18), rgba(255,109,198,0.14));
+      border: 1px solid rgba(255,255,255,0.10);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+    }
+    .hero h1, .hero h2 {
+      margin: 0;
+      font-size: clamp(28px, 4vw, 42px);
+      line-height: 1.05;
+    }
+    .hero p { margin: 10px 0 0; color: var(--muted); line-height: 1.55; }
+
+    .login-grid {
+      display: grid;
+      grid-template-columns: 1.05fr 0.95fr;
+      gap: 18px;
+    }
+    .info-box {
+      border-radius: 22px;
+      padding: 18px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.07);
+    }
+    .info-box h3 { margin: 0 0 10px; }
+    .info-box ul {
+      margin: 0;
+      padding-left: 18px;
+      color: var(--muted);
+      line-height: 1.7;
     }
 
-    /* Responsive */
-    @media (max-width: 768px) {
-      .sidebar { width: 200px; }
+    .login-form, .setup-form { display: flex; flex-direction: column; gap: 12px; }
+    .divider {
+      height: 1px;
+      background: rgba(255,255,255,0.08);
+      margin: 12px 0;
+    }
+
+    .tiny {
+      font-size: 12px;
+      color: var(--subtle);
+      line-height: 1.45;
+    }
+
+    .hidden { display: none !important; }
+
+    .mobile-toggle {
+      display: none;
+    }
+
+    .inline-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .hint {
+      padding: 12px 14px;
+      border-radius: 16px;
+      border: 1px dashed rgba(255,255,255,0.14);
+      color: var(--muted);
+      background: rgba(255,255,255,0.03);
+      line-height: 1.5;
+      font-size: 13px;
+    }
+
+    @media (max-width: 1180px) {
+      .shell { grid-template-columns: 270px 1fr 280px; }
+    }
+
+    @media (max-width: 960px) {
+      body { overflow: auto; }
+      .shell {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 1fr auto;
+        height: 100vh;
+      }
+      .sidebar, .rightbar {
+        position: fixed;
+        top: 0;
+        bottom: 0;
+        z-index: 70;
+        width: min(88vw, 340px);
+        transform: translateX(-102%);
+        transition: transform 220ms ease;
+      }
+      .rightbar {
+        right: 0;
+        left: auto;
+        transform: translateX(102%);
+      }
+      .sidebar.open { transform: translateX(0); }
+      .rightbar.open { transform: translateX(0); }
+      .mobile-toggle { display: inline-grid; }
+      .content { min-height: 0; }
+      .login-grid, .modal-grid { grid-template-columns: 1fr; }
+      .hero { grid-template-columns: 1fr; }
+      .hero-mark { width: 82px; height: 82px; font-size: 34px; }
+    }
+
+    @media (max-width: 640px) {
+      .composer { grid-template-columns: 1fr; }
+      .composer .cmd-chip, .composer-actions { width: 100%; }
+      .composer-actions { justify-content: stretch; }
+      .composer-actions .secondary-btn, .composer-actions .primary-btn { flex: 1; }
+      .messages { padding: 14px 12px 8px; }
+      .composer-wrap { padding: 10px 12px 12px; }
+      .topbar { height: auto; min-height: var(--topbar-h); flex-wrap: wrap; padding: 12px; }
     }
   </style>
 </head>
 <body>
+  <div id="loginScreen" class="login-screen">
+    <div class="card">
+      <div class="card-body">
+        <div class="hero">
+          <div class="hero-mark">✦</div>
+          <div>
+            <h1>DeepSeek Roleplay</h1>
+            <p>Live multi-user chat, AI setup, session replay, uploads, synced media, and the usual human desire to make one browser do five jobs badly.</p>
+          </div>
+        </div>
 
-  <!-- Login Overlay -->
-  <div id="login-overlay">
-    <div class="login-card">
-      <h1>DeepSeek Realm</h1>
-      <input type="text" id="login-username" placeholder="Your username" autocomplete="off">
-      <input type="password" id="login-password" placeholder="Password (if required)">
-      <label>
-        <input type="checkbox" id="remember-password"> Remember password
-      </label>
-      <button class="btn" id="login-btn">Enter the Realm</button>
-      <p id="login-error" style="color:#f44336; margin-top:10px;"></p>
+        <div class="login-grid">
+          <div class="info-box">
+            <h3>What this client handles</h3>
+            <ul>
+              <li>Username/password join</li>
+              <li>Auto-reconnect through the local relay</li>
+              <li>Admin setup on first launch</li>
+              <li>Music, background, gallery, and profile uploads</li>
+              <li>Reasoning display when the server exposes it</li>
+            </ul>
+            <div class="divider"></div>
+            <div class="hint">
+              Slash commands still work in chat. Useful ones: <strong>/sleep</strong>, <strong>/wake</strong>, <strong>/clear</strong>, <strong>/new</strong>, <strong>/export</strong>, <strong>/load yyyy/mm/dd/n</strong>, and <strong>/import filename.json</strong>.
+            </div>
+          </div>
+
+          <div>
+            <div class="login-form">
+              <div class="field">
+                <label for="loginUsername">Username</label>
+                <input id="loginUsername" type="text" autocomplete="username" placeholder="Enter username" />
+              </div>
+              <div class="field">
+                <label for="loginPassword">Password</label>
+                <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Password if required" />
+              </div>
+              <div class="toggle-row">
+                <label class="toggle"><input id="rememberPassword" type="checkbox" /> Remember password locally</label>
+                <span id="loginModeHint">Local relay will connect to the server</span>
+              </div>
+              <div class="footer-actions" style="margin-top: 2px;">
+                <button id="loginButton" class="primary-btn" type="button">Enter</button>
+              </div>
+              <div id="loginError" class="tiny" style="color: var(--bad);"></div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
-  <!-- Main Application (hidden initially) -->
-  <div id="main-app" style="display: none;">
-    <!-- Left Sidebar: Users -->
-    <div class="sidebar" id="user-sidebar">
-      <h3>👥 Realm Members</h3>
-      <ul class="user-list" id="user-list"></ul>
-      <button class="btn" id="logout-btn" style="margin-top:auto;">Leave</button>
-    </div>
+  <div id="setupScreen" class="setup-screen hidden">
+    <div class="card">
+      <div class="card-body">
+        <div class="hero" style="margin-bottom: 14px;">
+          <div class="hero-mark">⚙</div>
+          <div>
+            <h2>AI setup required</h2>
+            <p>This is the first configured admin session. The server is waiting for the initial persona settings. Naturally it cannot trust humans to remember their own defaults.</p>
+          </div>
+        </div>
 
-    <!-- Main Chat Area -->
-    <div class="main-area">
-      <!-- Music Bar -->
-      <div class="music-bar" id="music-bar" style="display: none;">
-        <span style="color:var(--neon);">🎵</span>
-        <span id="music-now-playing">No music</span>
-        <div class="progress-container" id="progress-bar">
-          <div class="progress-fill" id="progress-fill"></div>
+        <div class="setup-form">
+          <div class="modal-grid">
+            <div class="field">
+              <label for="setupAiName">AI name</label>
+              <input id="setupAiName" type="text" placeholder="DEEPSEEK" />
+            </div>
+            <div class="field">
+              <label for="setupReasoning">Reasoning level</label>
+              <select id="setupReasoning">
+                <option value="low">low</option>
+                <option value="medium" selected>medium</option>
+                <option value="high">high</option>
+              </select>
+            </div>
+          </div>
+          <div class="field">
+            <label for="setupBehavior">Behavior</label>
+            <textarea id="setupBehavior" placeholder="Helpful and intelligent."></textarea>
+          </div>
+          <div class="field">
+            <label for="setupFirstMessage">First message</label>
+            <textarea id="setupFirstMessage" placeholder="Optional greeting to send after setup"></textarea>
+          </div>
+          <div class="modal-grid">
+            <div class="field">
+              <label for="setupPassword">Session password</label>
+              <input id="setupPassword" type="password" placeholder="Optional session password" />
+            </div>
+            <div class="field">
+              <label>&nbsp;</label>
+              <label class="toggle" style="margin-top: 8px;"><input id="setupShowReasoning" type="checkbox" /> Show reasoning to clients</label>
+            </div>
+          </div>
+          <div class="footer-actions">
+            <button id="setupSaveButton" class="primary-btn" type="button">Save setup</button>
+          </div>
+          <div id="setupError" class="tiny" style="color: var(--bad);"></div>
         </div>
-        <div class="music-controls" id="music-controls" style="display: none;">
-          <button id="music-play">▶</button>
-          <button id="music-loop">🔁</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="appShell" class="shell hidden">
+    <aside id="leftSidebar" class="panel sidebar">
+      <div class="sidebar-header">
+        <div class="brand-mark">✦</div>
+        <div class="title-group">
+          <strong>Members</strong>
+          <span id="memberCount">0 online</span>
         </div>
-        <button class="gallery-toggle" id="gallery-toggle">🖼️ Gallery</button>
-        <button id="ai-config-btn" style="display:none;" class="btn">⚙️ AI</button>
+        <button id="leftCloseBtn" class="icon-btn mobile-toggle" type="button" title="Close members">✕</button>
       </div>
 
-      <!-- Chat Messages -->
-      <div class="chat-messages" id="chat-messages"></div>
+      <div class="sidebar-section">
+        <div class="section-title">
+          <h3>Room status</h3>
+          <span id="sessionIdText">Session: -</span>
+        </div>
+        <div class="mini-stat">
+          <div class="stat-card">
+            <span>Connection</span>
+            <strong id="connectionText">Connecting</strong>
+          </div>
+          <div class="stat-card">
+            <span>Role</span>
+            <strong id="roleText">user</strong>
+          </div>
+        </div>
+      </div>
 
-      <!-- Input -->
-      <div class="input-container">
-        <input type="text" id="message-input" placeholder="Type your message..." autocomplete="off">
-        <button id="send-btn">➤</button>
+      <div class="sidebar-section" style="flex: 1; min-height: 0; display: flex; flex-direction: column;">
+        <div class="section-title">
+          <h3>Online users</h3>
+          <span id="onlineCountBadge">0</span>
+        </div>
+        <div id="userList" class="list"></div>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="toolbar">
+          <button id="openGalleryBtn" class="secondary-btn" type="button">Gallery</button>
+          <button id="openUploadBtn" class="secondary-btn" type="button">Uploads</button>
+          <button id="openCommandsBtn" class="secondary-btn" type="button">Commands</button>
+        </div>
+      </div>
+    </aside>
+
+    <main class="panel content">
+      <div class="topbar">
+        <div class="topbar-left">
+          <button id="openLeftSidebar" class="icon-btn mobile-toggle" type="button" title="Open members">☰</button>
+          <div class="title-group">
+            <strong id="roomTitle">DeepSeek Roleplay</strong>
+            <span id="roomSubtitle">Waiting for login</span>
+          </div>
+          <span class="pill"><span id="serverDot" class="status-dot"></span><span id="serverStatus">Connecting</span></span>
+        </div>
+        <div class="topbar-right">
+          <span class="pill" id="aiNamePill">AI: -</span>
+          <button id="openAiButton" class="secondary-btn hidden" type="button">AI settings</button>
+          <button id="logoutButton" class="ghost-btn" type="button">Logout</button>
+          <button id="openRightSidebar" class="icon-btn mobile-toggle" type="button" title="Open controls">⚙</button>
+        </div>
+      </div>
+
+      <div class="chat-stage">
+        <div id="musicBar" class="sidebar-section hidden" style="border-top: 0;">
+          <div class="inline-status" style="justify-content: space-between; width: 100%;">
+            <div class="inline-status">
+              <span>🎵</span>
+              <strong id="musicTitle">No music loaded</strong>
+              <span id="musicStateLabel" class="small-note"></span>
+            </div>
+            <div class="inline-status">
+              <button id="musicPlayBtn" class="icon-btn hidden" type="button" title="Play or pause">▶</button>
+              <button id="musicLoopBtn" class="icon-btn hidden" type="button" title="Toggle loop">↻</button>
+            </div>
+          </div>
+          <div id="musicProgressTrack" style="margin-top: 10px; width: 100%; height: 8px; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; cursor: pointer;">
+            <div id="musicProgressFill" style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2));"></div>
+          </div>
+        </div>
+
+        <div id="messages" class="messages"></div>
+      </div>
+
+      <div class="composer-wrap">
+        <div class="composer">
+          <button id="commandChip" class="icon-btn cmd-chip" type="button" title="Insert slash command">/</button>
+          <textarea id="messageInput" placeholder="Write a message or command. Press Enter to send, Shift+Enter for a new line."></textarea>
+          <div class="composer-actions">
+            <button id="sendMessageBtn" class="primary-btn" type="button">Send</button>
+            <button id="quickUploadSessionBtn" class="secondary-btn" type="button">Upload log</button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <aside id="rightSidebar" class="panel rightbar panel-right">
+      <div class="rightbar-header">
+        <div class="brand-mark">☾</div>
+        <div class="title-group">
+          <strong>Controls</strong>
+          <span id="controlSubtitle">Uploads and room actions</span>
+        </div>
+        <button id="rightCloseBtn" class="icon-btn mobile-toggle" type="button" title="Close controls">✕</button>
+      </div>
+
+      <div class="right-section">
+        <div class="section-title">
+          <h3>Session tools</h3>
+          <span>Admin only where needed</span>
+        </div>
+        <div class="stack">
+          <button id="openAiButton2" class="secondary-btn hidden" type="button">Edit AI persona</button>
+          <button id="openMediaButton" class="secondary-btn" type="button">Media uploads</button>
+          <button id="uploadProfileQuickBtn" class="secondary-btn" type="button">Change profile pic</button>
+          <button id="uploadSessionQuickBtn" class="secondary-btn" type="button">Upload session log</button>
+        </div>
+      </div>
+
+      <div class="right-section">
+        <div class="section-title">
+          <h3>Commands</h3>
+          <span>Press a button</span>
+        </div>
+        <div class="chip-row">
+          <button class="chip command-chip" data-command="/sleep" type="button">/sleep</button>
+          <button class="chip command-chip" data-command="/wake" type="button">/wake</button>
+          <button class="chip command-chip" data-command="/clear" type="button">/clear</button>
+          <button class="chip command-chip" data-command="/new" type="button">/new</button>
+          <button class="chip command-chip" data-command="/export" type="button">/export</button>
+        </div>
+      </div>
+
+      <div class="right-section" style="flex: 1; min-height: 0; display: flex; flex-direction: column;">
+        <div class="section-title">
+          <h3>Current settings</h3>
+          <span id="settingsBadge">-</span>
+        </div>
+        <div class="stack" style="overflow: auto; min-height: 0; padding-right: 2px;">
+          <div class="stat-card">
+            <span>Session ID</span>
+            <strong id="sessionIdRight">-</strong>
+          </div>
+          <div class="stat-card">
+            <span>Background</span>
+            <strong id="backgroundText">None</strong>
+          </div>
+          <div class="stat-card">
+            <span>Music</span>
+            <strong id="musicText">None</strong>
+          </div>
+          <div class="stat-card">
+            <span>Persona</span>
+            <strong id="personaText">-</strong>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <div id="galleryDrawer" class="gallery-drawer">
+    <div class="gallery-head">
+      <div class="inline-status">
+        <strong>Gallery</strong>
+        <span id="galleryCount" class="small-note">0 items</span>
+      </div>
+      <button id="closeGalleryBtn" class="icon-btn" type="button" title="Close gallery">✕</button>
+    </div>
+    <div id="galleryGrid" class="gallery-grid"></div>
+  </div>
+
+  <div id="aiModalOverlay" class="modal-overlay" aria-hidden="true">
+    <div class="modal wide">
+      <div class="modal-header">
+        <h2>AI persona</h2>
+        <button id="closeAiModal" class="icon-btn" type="button" title="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-grid">
+          <div class="field">
+            <label for="aiNameInput">AI name</label>
+            <input id="aiNameInput" type="text" placeholder="DEEPSEEK" />
+          </div>
+          <div class="field">
+            <label for="aiReasoningInput">Reasoning level</label>
+            <select id="aiReasoningInput">
+              <option value="low">low</option>
+              <option value="medium">medium</option>
+              <option value="high">high</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label for="aiBehaviorInput">Behavior</label>
+          <textarea id="aiBehaviorInput" placeholder="Helpful and intelligent."></textarea>
+        </div>
+        <div class="field">
+          <label for="aiFirstMessageInput">First message</label>
+          <textarea id="aiFirstMessageInput" placeholder="Optional greeting to send when the config is saved."></textarea>
+        </div>
+        <div class="modal-grid">
+          <div class="field">
+            <label for="aiPasswordInput">Session password</label>
+            <input id="aiPasswordInput" type="password" placeholder="Optional session password" />
+          </div>
+          <div class="field" style="display: flex; justify-content: end;">
+            <label class="toggle" style="margin-top: 28px;"><input id="aiShowReasoningInput" type="checkbox" /> Show reasoning</label>
+          </div>
+        </div>
+        <div class="footer-actions">
+          <button id="saveAiButton" class="primary-btn" type="button">Save persona</button>
+        </div>
+        <div id="aiModalError" class="tiny" style="color: var(--bad);"></div>
       </div>
     </div>
   </div>
 
-  <!-- Gallery Panel -->
-  <div class="gallery-panel" id="gallery-panel"></div>
-
-  <!-- AI Configuration Modal (admin only) -->
-  <div class="modal" id="ai-config-modal">
-    <div class="modal-content">
-      <button class="close-btn" id="close-ai-modal">&times;</button>
-      <h3>🧠 AI Persona</h3>
-      <input type="text" id="ai-name" placeholder="AI Name">
-      <input type="text" id="ai-behavior" placeholder="Behavior">
-      <input type="text" id="ai-first-message" placeholder="First Message">
-      <select id="ai-reasoning">
-        <option value="low">Low reasoning</option>
-        <option value="medium" selected>Medium reasoning</option>
-        <option value="high">High reasoning</option>
-      </select>
-      <label><input type="checkbox" id="ai-show-reasoning"> Show reasoning</label>
-      <input type="password" id="ai-password" placeholder="Set session password (optional)">
-      <button class="btn" id="save-ai-config">Save AI</button>
+  <div id="mediaModalOverlay" class="modal-overlay" aria-hidden="true">
+    <div class="modal wide">
+      <div class="modal-header">
+        <h2>Media uploads</h2>
+        <button id="closeMediaModal" class="icon-btn" type="button" title="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-grid">
+          <div class="field">
+            <label for="profileFileInput">Profile picture</label>
+            <input id="profileFileInput" type="file" accept="image/*" />
+            <div class="tiny">Visible for everyone. No password required.</div>
+          </div>
+          <div class="field">
+            <label for="backgroundFileInput">Background image</label>
+            <input id="backgroundFileInput" type="file" accept="image/*" />
+            <div class="tiny">Admin only. The server checks the current session password.</div>
+          </div>
+        </div>
+        <div class="modal-grid">
+          <div class="field">
+            <label for="musicFileInput">Music file</label>
+            <input id="musicFileInput" type="file" accept="audio/mpeg,audio/mp3,.mp3" />
+            <div class="tiny">Admin only. MP3 is expected because apparently standards still matter occasionally.</div>
+          </div>
+          <div class="field">
+            <label>Quick actions</label>
+            <div class="toolbar">
+              <button id="sendProfileUploadBtn" class="secondary-btn" type="button">Upload profile</button>
+              <button id="sendBackgroundUploadBtn" class="secondary-btn" type="button">Upload background</button>
+              <button id="sendMusicUploadBtn" class="secondary-btn" type="button">Upload music</button>
+            </div>
+          </div>
+        </div>
+        <div class="footer-actions">
+          <button id="openProfilePickerBtn" class="ghost-btn" type="button">Pick profile again</button>
+          <button id="closeMediaButton" class="primary-btn" type="button">Done</button>
+        </div>
+        <div id="mediaModalError" class="tiny" style="color: var(--bad);"></div>
+      </div>
     </div>
   </div>
 
-  <!-- Profile Picture Upload Modal -->
-  <div class="modal" id="upload-modal">
-    <div class="modal-content">
-      <button class="close-btn" id="close-upload-modal">&times;</button>
-      <h3>📷 Upload</h3>
-      <input type="file" id="profile-file" accept="image/*">
-      <button class="btn" id="upload-profile-btn">Set Profile Picture</button>
-      <hr style="margin:1rem 0; border-color:var(--glass-border);">
-      <input type="file" id="bg-file" accept="image/*" id="bg-file-input">
-      <button class="btn" id="upload-bg-btn" style="display:none;">Set Background</button>
-      <input type="file" id="music-file" accept=".mp3">
-      <button class="btn" id="upload-music-btn" style="display:none;">Upload Music</button>
+  <div id="sessionUploadModalOverlay" class="modal-overlay" aria-hidden="true">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Upload session log</h2>
+        <button id="closeSessionUploadModal" class="icon-btn" type="button" title="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label for="sessionPathInput">Session log filename or path</label>
+          <input id="sessionPathInput" type="text" placeholder="2026-05-30_1.txt or sessions/2026-05-30_1.txt" />
+          <div class="tiny">This is handled by the local relay, not the browser file picker. The file should exist on the machine running client.py.</div>
+        </div>
+        <div class="footer-actions">
+          <button id="beginSessionUploadBtn" class="primary-btn" type="button">Choose AI name</button>
+        </div>
+        <div id="sessionUploadError" class="tiny" style="color: var(--bad);"></div>
+      </div>
     </div>
   </div>
+
+  <div id="aiNamePromptOverlay" class="modal-overlay" aria-hidden="true">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>AI name for imported log</h2>
+        <button id="closeAiNamePrompt" class="icon-btn" type="button" title="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label for="aiNamePromptInput">Which sender name in the log is the AI?</label>
+          <input id="aiNamePromptInput" type="text" placeholder="DEEPSEEK" />
+        </div>
+        <div class="tiny" id="aiNamePromptFileLabel"></div>
+        <div class="footer-actions">
+          <button id="submitAiNamePromptBtn" class="primary-btn" type="button">Upload log</button>
+        </div>
+        <div id="aiNamePromptError" class="tiny" style="color: var(--bad);"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="commandHelpOverlay" class="modal-overlay" aria-hidden="true">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Commands</h2>
+        <button id="closeCommandHelp" class="icon-btn" type="button" title="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="hint">
+          Type these into chat, or tap them from the right panel. Only admins can run the control commands.
+        </div>
+        <div style="height: 12px;"></div>
+        <div class="stack">
+          <div class="stat-card"><span>/sleep</span><strong>Put the AI to sleep.</strong></div>
+          <div class="stat-card"><span>/wake</span><strong>Wake the AI up.</strong></div>
+          <div class="stat-card"><span>/clear</span><strong>Clear current history.</strong></div>
+          <div class="stat-card"><span>/new</span><strong>Start a new session.</strong></div>
+          <div class="stat-card"><span>/export</span><strong>Export current session JSON.</strong></div>
+          <div class="stat-card"><span>/load yyyy/mm/dd/n</span><strong>Load a saved session.</strong></div>
+          <div class="stat-card"><span>/import filename.json</span><strong>Import a session export.</strong></div>
+        </div>
+        <div class="footer-actions">
+          <button id="closeCommandHelp2" class="primary-btn" type="button">Done</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <audio id="musicAudio" preload="metadata"></audio>
 
   <script>
-    // ---------- Global State ----------
-    let ws;
-    let username = '';
-    let isAdmin = false;
-    let serverBaseUrl = ''; // Will be set by server_info
-    let currentMusicUrl = null;
-    let audioElement = new Audio();
-    let musicPlaying = false;
-    let musicLoop = false;
-    let galleryImages = [];
+    'use strict';
 
-    // DOM elements
-    const loginOverlay = document.getElementById('login-overlay');
-    const mainApp = document.getElementById('main-app');
-    const chatMessages = document.getElementById('chat-messages');
-    const messageInput = document.getElementById('message-input');
-    const sendBtn = document.getElementById('send-btn');
-    const userList = document.getElementById('user-list');
-    const musicBar = document.getElementById('music-bar');
-    const musicControls = document.getElementById('music-controls');
-    const musicNowPlaying = document.getElementById('music-now-playing');
-    const musicPlayBtn = document.getElementById('music-play');
-    const musicLoopBtn = document.getElementById('music-loop');
-    const progressFill = document.getElementById('progress-fill');
-    const progressBar = document.getElementById('progress-bar');
-    const galleryPanel = document.getElementById('gallery-panel');
-    const galleryToggle = document.getElementById('gallery-toggle');
-    const aiConfigBtn = document.getElementById('ai-config-btn');
-    const aiModal = document.getElementById('ai-config-modal');
-    const uploadModal = document.getElementById('upload-modal');
-    const logoutBtn = document.getElementById('logout-btn');
+    const $ = (id) => document.getElementById(id);
+    const qs = (sel, root = document) => root.querySelector(sel);
+    const qsa = (sel, root = document) => [...root.querySelectorAll(sel)];
+    const escapeHtml = (s) => String(s ?? '').replace(/[&<>'"]/g, ch => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+    }[ch]));
+    const nowStamp = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-    // ---------- WebSocket Connection ----------
-    function connectWebSocket() {
-      const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-      ws = new WebSocket(`${protocol}//${location.host}/ws`);
+    const fallbackAvatar = (seed) => {
+      const safe = encodeURIComponent(seed || '?');
+      const hue = Math.abs((seed || '').split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % 360;
+      return `data:image/svg+xml;utf8,` + encodeURIComponent(`
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+          <defs>
+            <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="hsl(${hue},85%,62%)"/>
+              <stop offset="100%" stop-color="hsl(${(hue + 42) % 360},85%,55%)"/>
+            </linearGradient>
+          </defs>
+          <circle cx="50" cy="50" r="50" fill="url(#g)"/>
+          <text x="50" y="60" text-anchor="middle" font-size="40" fill="white" font-family="Arial, sans-serif">${safe.slice(0,1).toUpperCase()}</text>
+        </svg>`);
+    };
 
-      ws.onopen = () => console.log('Local WS connected');
-      ws.onmessage = (event) => handleServerMessage(JSON.parse(event.data));
-      ws.onclose = () => {
-        console.log('Local WS closed, reconnecting in 3s...');
-        setTimeout(connectWebSocket, 3000);
-      };
+    const state = {
+      ws: null,
+      connected: false,
+      connecting: false,
+      username: '',
+      password: '',
+      rememberPassword: false,
+      role: 'user',
+      isAdmin: false,
+      serverBaseUrl: '',
+      serverReady: false,
+      aiConfig: { name: '-', behavior: '', first_message: '', reasoning_level: 'medium', show_reasoning: false, configured: false, admin_username: null },
+      history: [],
+      sessionId: '',
+      profilePics: {},
+      users: {},
+      gallery: [],
+      backgroundUrl: '',
+      music: { url: null, playing: false, currentTime: 0, loop: false, server_time: 0 },
+      pendingUpload: null,
+      reconnectTimer: null,
+      suppressScroll: false,
+      currentMusicUrl: null,
+    };
+
+    const dom = {
+      loginScreen: $('loginScreen'), setupScreen: $('setupScreen'), appShell: $('appShell'),
+      loginUsername: $('loginUsername'), loginPassword: $('loginPassword'), rememberPassword: $('rememberPassword'), loginButton: $('loginButton'), loginError: $('loginError'),
+      setupAiName: $('setupAiName'), setupReasoning: $('setupReasoning'), setupBehavior: $('setupBehavior'), setupFirstMessage: $('setupFirstMessage'), setupPassword: $('setupPassword'), setupShowReasoning: $('setupShowReasoning'), setupSaveButton: $('setupSaveButton'), setupError: $('setupError'),
+      messages: $('messages'), messageInput: $('messageInput'), sendMessageBtn: $('sendMessageBtn'), commandChip: $('commandChip'), quickUploadSessionBtn: $('quickUploadSessionBtn'),
+      userList: $('userList'), memberCount: $('memberCount'), onlineCountBadge: $('onlineCountBadge'),
+      connectionText: $('connectionText'), serverStatus: $('serverStatus'), serverDot: $('serverDot'), roleText: $('roleText'), roomSubtitle: $('roomSubtitle'), roomTitle: $('roomTitle'), aiNamePill: $('aiNamePill'), sessionIdText: $('sessionIdText'), sessionIdRight: $('sessionIdRight'), settingsBadge: $('settingsBadge'), backgroundText: $('backgroundText'), musicText: $('musicText'), personaText: $('personaText'),
+      openAiButton: $('openAiButton'), openAiButton2: $('openAiButton2'), logoutButton: $('logoutButton'),
+      leftSidebar: $('leftSidebar'), rightSidebar: $('rightSidebar'), openLeftSidebar: $('openLeftSidebar'), leftCloseBtn: $('leftCloseBtn'), openRightSidebar: $('openRightSidebar'), rightCloseBtn: $('rightCloseBtn'),
+      openGalleryBtn: $('openGalleryBtn'), closeGalleryBtn: $('closeGalleryBtn'), galleryDrawer: $('galleryDrawer'), galleryGrid: $('galleryGrid'), galleryCount: $('galleryCount'),
+      openUploadBtn: $('openUploadBtn'), openMediaButton: $('openMediaButton'), uploadProfileQuickBtn: $('uploadProfileQuickBtn'), uploadSessionQuickBtn: $('uploadSessionQuickBtn'),
+      aiModalOverlay: $('aiModalOverlay'), closeAiModal: $('closeAiModal'), saveAiButton: $('saveAiButton'), aiNameInput: $('aiNameInput'), aiBehaviorInput: $('aiBehaviorInput'), aiFirstMessageInput: $('aiFirstMessageInput'), aiReasoningInput: $('aiReasoningInput'), aiShowReasoningInput: $('aiShowReasoningInput'), aiPasswordInput: $('aiPasswordInput'), aiModalError: $('aiModalError'),
+      mediaModalOverlay: $('mediaModalOverlay'), closeMediaModal: $('closeMediaModal'), closeMediaButton: $('closeMediaButton'), openProfilePickerBtn: $('openProfilePickerBtn'), profileFileInput: $('profileFileInput'), backgroundFileInput: $('backgroundFileInput'), musicFileInput: $('musicFileInput'), sendProfileUploadBtn: $('sendProfileUploadBtn'), sendBackgroundUploadBtn: $('sendBackgroundUploadBtn'), sendMusicUploadBtn: $('sendMusicUploadBtn'), mediaModalError: $('mediaModalError'),
+      sessionUploadModalOverlay: $('sessionUploadModalOverlay'), closeSessionUploadModal: $('closeSessionUploadModal'), sessionPathInput: $('sessionPathInput'), beginSessionUploadBtn: $('beginSessionUploadBtn'), sessionUploadError: $('sessionUploadError'),
+      aiNamePromptOverlay: $('aiNamePromptOverlay'), closeAiNamePrompt: $('closeAiNamePrompt'), aiNamePromptInput: $('aiNamePromptInput'), aiNamePromptFileLabel: $('aiNamePromptFileLabel'), submitAiNamePromptBtn: $('submitAiNamePromptBtn'), aiNamePromptError: $('aiNamePromptError'),
+      commandHelpOverlay: $('commandHelpOverlay'), closeCommandHelp: $('closeCommandHelp'), closeCommandHelp2: $('closeCommandHelp2'),
+      musicBar: $('musicBar'), musicTitle: $('musicTitle'), musicStateLabel: $('musicStateLabel'), musicPlayBtn: $('musicPlayBtn'), musicLoopBtn: $('musicLoopBtn'), musicProgressTrack: $('musicProgressTrack'), musicProgressFill: $('musicProgressFill'), musicAudio: $('musicAudio'),
+      commandChips: qsa('.command-chip'),
+    };
+
+    function show(el) { el.classList.remove('hidden'); }
+    function hide(el) { el.classList.add('hidden'); }
+    function openOverlay(el) { el.classList.add('show'); el.setAttribute('aria-hidden', 'false'); }
+    function closeOverlay(el) { el.classList.remove('show'); el.setAttribute('aria-hidden', 'true'); }
+    function toastLine(text) {
+      if (!text) return;
+      addSystemMessage(String(text));
     }
 
-    function send(msg) {
-      if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+    function setConnection(status, kind = 'warn') {
+      dom.connectionText.textContent = status;
+      dom.serverStatus.textContent = status;
+      dom.serverDot.classList.remove('ok', 'bad');
+      if (kind === 'ok') dom.serverDot.classList.add('ok');
+      if (kind === 'bad') dom.serverDot.classList.add('bad');
     }
 
-    // ---------- Login ----------
-    document.getElementById('login-btn').addEventListener('click', () => {
-      const u = document.getElementById('login-username').value.trim();
-      const p = document.getElementById('login-password').value;
-      const rem = document.getElementById('remember-password').checked;
-      if (!u) return;
-      send({ type: 'login', username: u, password: p, remember_password: rem });
-    });
+    function saveLocalCredentials() {
+      if (dom.rememberPassword.checked) {
+        localStorage.setItem('dr_username', state.username || dom.loginUsername.value.trim());
+        localStorage.setItem('dr_password', state.password || dom.loginPassword.value);
+        localStorage.setItem('dr_remember', '1');
+      } else {
+        localStorage.setItem('dr_username', dom.loginUsername.value.trim());
+        localStorage.removeItem('dr_password');
+        localStorage.removeItem('dr_remember');
+      }
+    }
 
-    // ---------- Message Handling ----------
+    function loadLocalCredentials() {
+      const u = localStorage.getItem('dr_username') || '';
+      const p = localStorage.getItem('dr_password') || '';
+      dom.loginUsername.value = u;
+      dom.loginPassword.value = p;
+      dom.rememberPassword.checked = localStorage.getItem('dr_remember') === '1';
+    }
+
+    function wsUrl() {
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      return `${proto}//${location.host}/ws`;
+    }
+
+    function connect() {
+      if (state.connecting) return;
+      state.connecting = true;
+      clearTimeout(state.reconnectTimer);
+      setConnection('Connecting');
+      try {
+        const ws = new WebSocket(wsUrl());
+        state.ws = ws;
+
+        ws.onopen = () => {
+          state.connecting = false;
+          state.connected = true;
+          setConnection('Connected', 'ok');
+          if (state.username) {
+            // Login is only sent explicitly after the user chooses credentials.
+          }
+        };
+
+        ws.onmessage = (event) => {
+          let data;
+          try { data = JSON.parse(event.data); } catch { return; }
+          handleServerMessage(data);
+        };
+
+        ws.onerror = () => {
+          setConnection('Socket error', 'bad');
+        };
+
+        ws.onclose = () => {
+          state.connecting = false;
+          state.connected = false;
+          setConnection('Disconnected', 'bad');
+          if (state.username) scheduleReconnect();
+        };
+      } catch (err) {
+        state.connecting = false;
+        setConnection(`Failed: ${err.message}`, 'bad');
+        scheduleReconnect();
+      }
+    }
+
+    function scheduleReconnect() {
+      clearTimeout(state.reconnectTimer);
+      state.reconnectTimer = setTimeout(() => {
+        if (!state.username) return;
+        connect();
+        if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+          send({ type: 'login', username: state.username, password: state.password, remember_password: state.rememberPassword });
+        }
+      }, 2500);
+    }
+
+    function send(payload) {
+      if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return false;
+      state.ws.send(JSON.stringify(payload));
+      return true;
+    }
+
+    function sendChat(text) {
+      const value = String(text || '').trim();
+      if (!value) return;
+      send({ type: 'chat_message', message: value });
+    }
+
+    function login() {
+      const username = dom.loginUsername.value.trim();
+      const password = dom.loginPassword.value;
+      const remember_password = dom.rememberPassword.checked;
+      dom.loginError.textContent = '';
+      if (!username) {
+        dom.loginError.textContent = 'Username is required.';
+        return;
+      }
+      state.username = username;
+      state.password = password;
+      state.rememberPassword = remember_password;
+      saveLocalCredentials();
+      if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {
+        connect();
+        setTimeout(() => send({ type: 'login', username, password, remember_password }), 180);
+      } else {
+        send({ type: 'login', username, password, remember_password });
+      }
+      setConnection('Authorizing');
+    }
+
+    function revealApp() {
+      hide(dom.loginScreen);
+      hide(dom.setupScreen);
+      show(dom.appShell);
+      requestAnimationFrame(() => {
+        if (window.innerWidth <= 960) {
+          dom.leftSidebar.classList.remove('open');
+          dom.rightSidebar.classList.remove('open');
+        }
+      });
+    }
+
     function handleServerMessage(data) {
-      switch(data.type) {
+      switch (data.type) {
+        case 'join_response':
+          if (data.accepted) {
+            state.role = data.role || 'user';
+            state.isAdmin = state.role === 'admin';
+            dom.roleText.textContent = state.role;
+            dom.roomSubtitle.textContent = `Connected as ${data.username || state.username}`;
+            dom.roomTitle.textContent = `DeepSeek Roleplay · ${data.username || state.username}`;
+            dom.aiNamePill.textContent = `AI: ${state.aiConfig.name || '-'}`;
+            saveLocalCredentials();
+            revealApp();
+          } else {
+            dom.loginError.textContent = data.reason || 'Login rejected.';
+            setConnection('Login failed', 'bad');
+          }
+          break;
+
         case 'login_accepted':
-          username = data.username;
-          loginOverlay.style.display = 'none';
-          mainApp.style.display = 'flex';
-          connectWebSocket(); // reconnect after login? Actually already connected.
+          state.role = data.role || state.role;
+          state.isAdmin = state.role === 'admin';
+          dom.roleText.textContent = state.role;
+          dom.roomSubtitle.textContent = `Connected as ${data.username || state.username}`;
+          dom.roomTitle.textContent = `DeepSeek Roleplay · ${data.username || state.username}`;
+          revealApp();
           break;
+
         case 'login_failed':
-          document.getElementById('login-error').textContent = data.reason || 'Login failed';
+          dom.loginError.textContent = data.reason || 'Login failed.';
+          setConnection('Login failed', 'bad');
           break;
+
         case 'server_info':
-          serverBaseUrl = data.upload_url || 'https://deepseek-terminal-chat-production-78d3.up.railway.app';
-          // Now we can enable upload features
+          state.serverBaseUrl = data.upload_url || '';
+          state.serverReady = true;
+          setConnection('Ready', 'ok');
           break;
+
         case 'session_state':
           applySessionState(data);
           break;
+
         case 'chat':
-          appendMessage(data.sender, data.message, data.replay);
+          appendChatMessage(data);
           break;
+
         case 'system':
-          appendSystemMessage(data.message);
+          addSystemMessage(data.message);
           break;
+
         case 'reasoning':
-          appendReasoning(data.sender, data.message);
+          addReasoningMessage(data.sender || 'AI', data.message || '');
           break;
+
         case 'profile_pic_update':
-          updateProfilePic(data.username, data.url);
+          state.profilePics[data.username] = data.url;
+          renderUsers();
           break;
+
         case 'background_update':
-          document.body.style.backgroundImage = `url(${serverBaseUrl}${data.url})`;
+          setBackground(data.url || '');
           break;
+
         case 'music_state':
-          updateMusicState(data);
+          syncMusic(data);
           break;
+
         case 'new_image':
-          addToGallery(data.url, data.uploader);
+          addGalleryItem(data.url, data.uploader);
           break;
+
         case 'user_joined':
-          addUser(data.username, true);
-          break;
         case 'user_left':
-          removeUser(data.username);
+          if (data.type === 'user_joined') state.users[data.username] = data.role || 'user';
+          else delete state.users[data.username];
+          renderUsers();
           break;
+
         case 'ai_config_changed':
-          // Optionally update UI
+          if (data.config) applyAiConfig(data.config);
+          addSystemMessage(`AI configuration updated to ${state.aiConfig.name}.`);
           break;
+
         case 'setup_required':
-          // Admin must configure AI
-          if (isAdmin) showAiModal();
+          openSetupScreen();
           break;
-        case 'ask_ai_name':
-          const aiName = prompt(`Enter AI name for session upload (${data.filename})`);
-          if (aiName) send({ type: 'ai_name_response', upload_id: data.upload_id, ai_name: aiName });
-          break;
+
         case 'new_session':
-          chatMessages.innerHTML = '';
+          clearMessages();
+          addSystemMessage(data.message || 'New session started.');
+          break;
+
+        case 'ask_ai_name':
+          openAiNamePrompt(data.upload_id, data.filename);
           break;
       }
     }
 
-    function applySessionState(state) {
-      // History
-      chatMessages.innerHTML = '';
-      if (state.history) state.history.forEach(entry => appendMessage(entry.sender, entry.content, true));
-      // Background
-      if (state.background_url) document.body.style.backgroundImage = `url(${serverBaseUrl}${state.background_url})`;
-      // Music
-      if (state.music_state) updateMusicState(state.music_state);
-      // Profile pics
-      if (state.profile_pics) Object.entries(state.profile_pics).forEach(([user, url]) => updateProfilePic(user, url));
-      // Gallery
-      if (state.gallery) state.gallery.forEach(img => addToGallery(img.url, img.uploader));
-      // Online users
-      if (state.online_users) Object.entries(state.online_users).forEach(([user, role]) => addUser(user, true));
-      // Admin detection
-      isAdmin = (state.ai_config && username === state.ai_config.admin_username); // rough
-      if (isAdmin) {
-        aiConfigBtn.style.display = 'inline-block';
-        document.getElementById('upload-bg-btn').style.display = 'inline-block';
-        document.getElementById('upload-music-btn').style.display = 'inline-block';
-        musicControls.style.display = 'flex';
+    function normalizeStateEntry(entry) {
+      return {
+        role: entry.role || 'user',
+        sender: entry.sender || 'UNKNOWN',
+        content: entry.content || ''
+      };
+    }
+
+    function applySessionState(data) {
+      if (Array.isArray(data.history)) {
+        state.history = data.history.map(normalizeStateEntry);
+        clearMessages();
+        for (const entry of state.history) {
+          appendChatMessage({ sender: entry.sender, message: entry.content, replay: true, role: entry.role });
+        }
       }
-    }
 
-    // ---------- Chat UI ----------
-    function appendMessage(sender, text, isReplay = false) {
-      const div = document.createElement('div');
-      div.className = `message ${sender === username ? 'user' : sender === 'SYSTEM' ? 'system' : 'assistant'}`;
-      const profilePic = getProfilePicUrl(sender);
-      if (sender !== 'SYSTEM' && sender !== username) {
-        const img = document.createElement('img');
-        img.src = profilePic || 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="50" fill="%23b76eff"/><text x="50" y="55" text-anchor="middle" fill="white" font-size="40">?</text></svg>';
-        img.className = 'profile-pic-msg';
-        div.appendChild(img);
+      if (data.ai_config) applyAiConfig(data.ai_config);
+      if (data.admin_username && data.admin_username === state.username) state.isAdmin = true;
+      if (typeof data.background_url !== 'undefined') setBackground(data.background_url || '');
+      if (data.music_state) syncMusic(data.music_state);
+      if (data.profile_pics) {
+        state.profilePics = { ...data.profile_pics };
+        renderUsers();
       }
-      const bubble = document.createElement('div');
-      bubble.className = 'bubble';
-      if (sender !== 'SYSTEM' && sender !== username) {
-        const nameSpan = document.createElement('span');
-        nameSpan.className = 'sender-name';
-        nameSpan.textContent = sender;
-        bubble.appendChild(nameSpan);
+      if (Array.isArray(data.gallery)) {
+        state.gallery = [];
+        dom.galleryGrid.innerHTML = '';
+        for (const item of data.gallery) addGalleryItem(item.url, item.uploader, item.timestamp);
       }
-      bubble.appendChild(document.createTextNode(text));
-      div.appendChild(bubble);
-      if (sender === username && sender !== 'SYSTEM') {
-        const img = document.createElement('img');
-        img.src = getProfilePicUrl(username) || 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="50" fill="%23ff6ec7"/><text x="50" y="55" text-anchor="middle" fill="white" font-size="40">?</text></svg>';
-        img.className = 'profile-pic-msg';
-        div.appendChild(img);
+      if (data.online_users) {
+        state.users = { ...data.online_users };
+        renderUsers();
       }
-      chatMessages.appendChild(div);
-      chatMessages.scrollTop = chatMessages.scrollHeight;
+      if (data.current_session_id) {
+        state.sessionId = data.current_session_id;
+        dom.sessionIdText.textContent = `Session: ${state.sessionId}`;
+        dom.sessionIdRight.textContent = state.sessionId;
+      }
+      updateUIVisibility();
     }
 
-    function appendSystemMessage(text) {
-      const div = document.createElement('div');
-      div.className = 'message system';
-      div.innerHTML = `<div class="bubble">${text}</div>`;
-      chatMessages.appendChild(div);
-      chatMessages.scrollTop = chatMessages.scrollHeight;
+    function applyAiConfig(cfg) {
+      state.aiConfig = {
+        name: cfg.name || cfg.ai_name || '-',
+        behavior: cfg.behavior || '',
+        first_message: cfg.first_message || '',
+        reasoning_level: cfg.reasoning_level || 'medium',
+        show_reasoning: Boolean(cfg.show_reasoning),
+        configured: Boolean(cfg.configured),
+        admin_username: cfg.admin_username ?? null,
+      };
+      dom.aiNamePill.textContent = `AI: ${state.aiConfig.name}`;
+      dom.personaText.textContent = `${state.aiConfig.name} · ${state.aiConfig.reasoning_level}`;
+      dom.settingsBadge.textContent = state.aiConfig.show_reasoning ? 'reasoning on' : 'reasoning off';
+      if (state.username && state.aiConfig.admin_username === state.username) state.isAdmin = true;
+      updateUIVisibility();
     }
 
-    function appendReasoning(sender, text) {
-      const div = document.createElement('div');
-      div.className = 'reasoning-box';
-      div.innerHTML = `<strong>${sender} reasoning:</strong><br>${text}`;
-      chatMessages.appendChild(div);
-      chatMessages.scrollTop = chatMessages.scrollHeight;
+    function updateUIVisibility() {
+      const admin = !!state.isAdmin;
+      if (admin) {
+        show(dom.openAiButton);
+        show(dom.openAiButton2);
+      } else {
+        hide(dom.openAiButton);
+        hide(dom.openAiButton2);
+      }
+      if (admin) {
+        show(dom.musicPlayBtn);
+        show(dom.musicLoopBtn);
+      } else {
+        hide(dom.musicPlayBtn);
+        hide(dom.musicLoopBtn);
+      }
+      dom.roleText.textContent = state.role || 'user';
+      dom.backgroundText.textContent = state.backgroundUrl ? 'Active' : 'None';
+      dom.musicText.textContent = state.music?.url ? 'Loaded' : 'None';
     }
 
-    // Profile pic cache
-    const profilePics = {};
-    function getProfilePicUrl(user) {
-      return profilePics[user] ? serverBaseUrl + profilePics[user] : null;
-    }
-    function updateProfilePic(user, url) {
-      profilePics[user] = url;
-      // Update user list and message icons dynamically? For simplicity we'll just update user list on next render.
-      // We could re-render user list, but it's fine.
-    }
-
-    // ---------- User List ----------
-    function addUser(user, online) {
-      const existing = document.getElementById(`user-${user}`);
-      if (existing) existing.remove();
-      const li = document.createElement('li');
-      li.className = 'user-item';
-      li.id = `user-${user}`;
-      li.innerHTML = `
-        <span class="online-dot ${online ? '' : 'offline-dot'}"></span>
-        <img class="profile-pic-small" src="${getProfilePicUrl(user) || 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="50" fill="%23888"/></svg>'}">
-        <span>${user}</span>
-      `;
-      userList.appendChild(li);
-    }
-    function removeUser(user) {
-      const el = document.getElementById(`user-${user}`);
-      if (el) el.remove();
-    }
-
-    // ---------- Music ----------
-    function updateMusicState(state) {
-      if (!state.url) {
-        musicBar.style.display = 'none';
+    function setBackground(url) {
+      state.backgroundUrl = url || '';
+      if (!state.serverBaseUrl || !url) {
+        document.body.style.backgroundImage = '';
+        dom.backgroundText.textContent = 'None';
         return;
       }
-      musicBar.style.display = 'flex';
-      musicNowPlaying.textContent = state.url.split('/').pop() || 'Music';
-      if (state.url !== currentMusicUrl) {
-        audioElement.src = serverBaseUrl + state.url;
-        currentMusicUrl = state.url;
-      }
-      audioElement.loop = state.loop;
-      musicLoopBtn.textContent = state.loop ? '🔂' : '🔁';
-      if (state.playing) {
-        // sync time: compute how much time passed since state was emitted
-        const elapsed = (Date.now()/1000 - state.server_time);
-        audioElement.currentTime = state.currentTime + elapsed;
-        audioElement.play().catch(console.warn);
-        musicPlayBtn.textContent = '⏸️';
-      } else {
-        audioElement.pause();
-        audioElement.currentTime = state.currentTime;
-        musicPlayBtn.textContent = '▶';
-      }
-      musicPlaying = state.playing;
-      musicLoop = state.loop;
+      const full = state.serverBaseUrl + url;
+      document.body.style.backgroundImage = `linear-gradient(135deg, rgba(7,7,18,0.72), rgba(7,7,18,0.42)), url('${full}')`;
+      dom.backgroundText.textContent = 'Active';
     }
 
-    audioElement.addEventListener('timeupdate', () => {
-      if (audioElement.duration) {
-        const pct = (audioElement.currentTime / audioElement.duration) * 100;
-        progressFill.style.width = pct + '%';
-      }
-    });
-
-    musicPlayBtn.addEventListener('click', () => {
-      if (!isAdmin) return;
-      const action = musicPlaying ? 'pause' : 'play';
-      send({ type: 'music_control', action, currentTime: audioElement.currentTime });
-    });
-    musicLoopBtn.addEventListener('click', () => {
-      if (!isAdmin) return;
-      send({ type: 'music_control', action: 'loop', loop: !musicLoop });
-    });
-    progressBar.addEventListener('click', (e) => {
-      if (!isAdmin) return;
-      const rect = progressBar.getBoundingClientRect();
-      const fraction = (e.clientX - rect.left) / rect.width;
-      const time = fraction * audioElement.duration;
-      send({ type: 'music_control', action: 'seek', currentTime: time });
-    });
-
-    // ---------- Gallery ----------
-    function addToGallery(url, uploader) {
-      const fullUrl = serverBaseUrl + url;
-      if (galleryImages.find(img => img.url === fullUrl)) return;
-      galleryImages.push({ url: fullUrl, uploader });
-      const img = document.createElement('img');
-      img.src = fullUrl;
-      img.title = `by ${uploader}`;
-      img.onclick = () => window.open(fullUrl, '_blank');
-      galleryPanel.appendChild(img);
+    function avatarFor(user) {
+      if (state.profilePics[user]) return state.serverBaseUrl ? state.serverBaseUrl + state.profilePics[user] : state.profilePics[user];
+      return fallbackAvatar(user);
     }
-    galleryToggle.addEventListener('click', () => {
-      galleryPanel.classList.toggle('open');
-    });
 
-    // ---------- AI Config Modal ----------
-    aiConfigBtn.addEventListener('click', showAiModal);
-    document.getElementById('close-ai-modal').addEventListener('click', () => aiModal.classList.remove('active'));
-    document.getElementById('save-ai-config').addEventListener('click', () => {
-      send({
-        type: 'ai_config_update',
-        ai_name: document.getElementById('ai-name').value,
-        behavior: document.getElementById('ai-behavior').value,
-        first_message: document.getElementById('ai-first-message').value,
-        reasoning_level: document.getElementById('ai-reasoning').value,
-        show_reasoning: document.getElementById('ai-show-reasoning').checked,
-        password: document.getElementById('ai-password').value
+    function renderUsers() {
+      const users = Object.entries(state.users || {});
+      dom.userList.innerHTML = '';
+      dom.memberCount.textContent = `${users.length} online`;
+      dom.onlineCountBadge.textContent = String(users.length);
+      for (const [user, role] of users.sort((a, b) => a[0].localeCompare(b[0]))) {
+        const item = document.createElement('div');
+        item.className = 'user-item' + (user === state.username ? ' me' : '');
+        item.innerHTML = `
+          <img class="avatar" src="${avatarFor(user)}" alt="${escapeHtml(user)}" />
+          <div class="user-name">
+            <strong>${escapeHtml(user)}</strong>
+            <small>${user === state.username ? 'You' : 'Online'}</small>
+          </div>
+          <span class="role-pill">${escapeHtml(role || 'user')}</span>
+        `;
+        dom.userList.appendChild(item);
+      }
+    }
+
+    function clearMessages() {
+      dom.messages.innerHTML = '';
+    }
+
+    function appendChatMessage(data) {
+      const sender = data.sender || 'UNKNOWN';
+      const message = data.message ?? '';
+      const replay = Boolean(data.replay);
+      const isSelf = sender === state.username;
+      const isSystem = sender === 'SYSTEM' || data.type === 'system';
+
+      const row = document.createElement('div');
+      row.className = 'message-row' + (isSelf ? ' self' : '') + (isSystem ? ' system' : '') + (replay ? ' replay' : '');
+
+      if (isSystem) {
+        const bubble = document.createElement('div');
+        bubble.className = 'bubble';
+        bubble.textContent = message;
+        row.appendChild(bubble);
+        dom.messages.appendChild(row);
+        scrollMessagesToBottom();
+        return;
+      }
+
+      const avatar = document.createElement('img');
+      avatar.className = 'avatar';
+      avatar.alt = sender;
+      avatar.src = avatarFor(sender);
+
+      const stack = document.createElement('div');
+      stack.className = 'bubble-stack';
+
+      const senderLine = document.createElement('div');
+      senderLine.className = 'sender-line';
+      senderLine.innerHTML = `<strong>${escapeHtml(sender)}</strong><span class="role-tag">${escapeHtml(isSelf ? 'you' : (data.role || (state.users[sender] || 'user')))}</span><span>${nowStamp()}</span>${replay ? '<span class="role-tag">replay</span>' : ''}`;
+
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble';
+      bubble.textContent = message;
+
+      stack.appendChild(senderLine);
+      stack.appendChild(bubble);
+      row.appendChild(isSelf ? stack : avatar);
+      row.appendChild(isSelf ? avatar : stack);
+      dom.messages.appendChild(row);
+      scrollMessagesToBottom();
+    }
+
+    function addSystemMessage(text) {
+      const row = document.createElement('div');
+      row.className = 'message-row system';
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble';
+      bubble.textContent = text || '';
+      row.appendChild(bubble);
+      dom.messages.appendChild(row);
+      scrollMessagesToBottom();
+    }
+
+    function addReasoningMessage(sender, text) {
+      const row = document.createElement('div');
+      row.className = 'message-row';
+      const stack = document.createElement('div');
+      stack.className = 'bubble-stack';
+      const senderLine = document.createElement('div');
+      senderLine.className = 'sender-line';
+      senderLine.innerHTML = `<strong>${escapeHtml(sender)}</strong><span class="role-tag">reasoning</span><span>${nowStamp()}</span>`;
+      const details = document.createElement('details');
+      details.className = 'reasoning-card';
+      details.open = Boolean(state.aiConfig.show_reasoning);
+      details.innerHTML = `<summary><span>Reasoning</span><span>▾</span></summary><div class="reasoning-body"></div>`;
+      details.querySelector('.reasoning-body').textContent = text || '';
+      stack.appendChild(senderLine);
+      stack.appendChild(details);
+      row.appendChild(stack);
+      dom.messages.appendChild(row);
+      scrollMessagesToBottom();
+    }
+
+    function scrollMessagesToBottom() {
+      if (state.suppressScroll) return;
+      requestAnimationFrame(() => {
+        dom.messages.scrollTop = dom.messages.scrollHeight;
       });
-      aiModal.classList.remove('active');
-    });
-    function showAiModal() {
-      aiModal.classList.add('active');
     }
 
-    // ---------- Upload Modal ----------
-    document.getElementById('close-upload-modal').addEventListener('click', () => uploadModal.classList.remove('active'));
-    document.getElementById('upload-profile-btn').addEventListener('click', async () => {
-      const file = document.getElementById('profile-file').files[0];
-      if (!file) return;
+    function gatherUploadPassword() {
+      return state.password || dom.loginPassword.value || localStorage.getItem('dr_password') || '';
+    }
+
+    function openAiModal() {
+      dom.aiModalError.textContent = '';
+      dom.aiNameInput.value = state.aiConfig.name || '';
+      dom.aiBehaviorInput.value = state.aiConfig.behavior || '';
+      dom.aiFirstMessageInput.value = state.aiConfig.first_message || '';
+      dom.aiReasoningInput.value = state.aiConfig.reasoning_level || 'medium';
+      dom.aiShowReasoningInput.checked = Boolean(state.aiConfig.show_reasoning);
+      dom.aiPasswordInput.value = gatherUploadPassword();
+      openOverlay(dom.aiModalOverlay);
+    }
+
+    function openMediaModal() {
+      dom.mediaModalError.textContent = '';
+      openOverlay(dom.mediaModalOverlay);
+    }
+
+    function openSessionUploadModal() {
+      dom.sessionUploadError.textContent = '';
+      dom.sessionPathInput.value = '';
+      openOverlay(dom.sessionUploadModalOverlay);
+    }
+
+    function openAiNamePrompt(uploadId, filename) {
+      state.pendingUpload = { uploadId, filename };
+      dom.aiNamePromptError.textContent = '';
+      dom.aiNamePromptInput.value = state.aiConfig.name || 'DEEPSEEK';
+      dom.aiNamePromptFileLabel.textContent = `Upload source: ${filename || 'unknown file'}`;
+      openOverlay(dom.aiNamePromptOverlay);
+    }
+
+    function closeAllModals() {
+      [dom.aiModalOverlay, dom.mediaModalOverlay, dom.sessionUploadModalOverlay, dom.aiNamePromptOverlay, dom.commandHelpOverlay].forEach(closeOverlay);
+    }
+
+    function toggleSidebar(side) {
+      if (window.innerWidth > 960) return;
+      if (side === 'left') dom.leftSidebar.classList.toggle('open');
+      if (side === 'right') dom.rightSidebar.classList.toggle('open');
+    }
+
+    function ensureMediaUrl(url) {
+      if (!url) return '';
+      if (/^https?:\/\//i.test(url)) return url;
+      return state.serverBaseUrl + url;
+    }
+
+    function addGalleryItem(url, uploader, timestamp) {
+      const full = ensureMediaUrl(url);
+      if (!full) return;
+      if (state.gallery.some(x => x.url === full)) return;
+      state.gallery.push({ url: full, uploader: uploader || 'unknown', timestamp: timestamp || '' });
+      const tile = document.createElement('div');
+      tile.className = 'thumb';
+      tile.innerHTML = `
+        <img src="${full}" alt="gallery item" />
+        <div class="caption">${escapeHtml(uploader || 'unknown')}</div>
+      `;
+      tile.addEventListener('click', () => window.open(full, '_blank', 'noopener'));
+      dom.galleryGrid.appendChild(tile);
+      dom.galleryCount.textContent = `${state.gallery.length} items`;
+    }
+
+    function setGalleryOpen(open) {
+      dom.galleryDrawer.classList.toggle('open', open);
+    }
+
+    function syncMusic(payload) {
+      state.music = {
+        url: payload.url || null,
+        playing: Boolean(payload.playing),
+        currentTime: Number(payload.currentTime || 0),
+        loop: Boolean(payload.loop),
+        server_time: Number(payload.server_time || 0),
+      };
+
+      if (!state.music.url) {
+        hide(dom.musicBar);
+        dom.musicText.textContent = 'None';
+        dom.musicTitle.textContent = 'No music loaded';
+        dom.musicStateLabel.textContent = '';
+        dom.musicProgressFill.style.width = '0%';
+        dom.musicAudio.pause();
+        dom.musicAudio.removeAttribute('src');
+        state.currentMusicUrl = null;
+        return;
+      }
+
+      show(dom.musicBar);
+      dom.musicText.textContent = 'Loaded';
+      const name = String(state.music.url).split('/').pop() || 'Music';
+      dom.musicTitle.textContent = name;
+      dom.musicStateLabel.textContent = state.music.playing ? 'playing' : 'paused';
+      dom.musicAudio.loop = state.music.loop;
+      dom.musicLoopBtn.textContent = state.music.loop ? '↻' : '↺';
+
+      const fullUrl = ensureMediaUrl(state.music.url);
+      if (state.currentMusicUrl !== fullUrl) {
+        state.currentMusicUrl = fullUrl;
+        dom.musicAudio.src = fullUrl;
+      }
+
+      if (state.music.playing) {
+        const elapsed = Math.max(0, (Date.now() / 1000) - state.music.server_time);
+        const target = Math.max(0, state.music.currentTime + elapsed);
+        if (!Number.isNaN(target)) {
+          try { dom.musicAudio.currentTime = target; } catch {}
+        }
+        dom.musicAudio.play().catch(() => {});
+        dom.musicPlayBtn.textContent = '⏸';
+      } else {
+        dom.musicAudio.pause();
+        try { dom.musicAudio.currentTime = state.music.currentTime; } catch {}
+        dom.musicPlayBtn.textContent = '▶';
+      }
+      updateUIVisibility();
+    }
+
+    function sendMusicControl(action, extra = {}) {
+      send({ type: 'music_control', action, ...extra });
+    }
+
+    function getUploadBase() {
+      return state.serverBaseUrl || `${location.protocol}//${location.host}`;
+    }
+
+    async function uploadFile(endpoint, file, fields = {}) {
       const form = new FormData();
       form.append('file', file);
-      form.append('username', username);
-      await fetch(`${serverBaseUrl}/upload/profile`, { method: 'POST', body: form });
-    });
-    document.getElementById('upload-bg-btn').addEventListener('click', async () => {
-      if (!isAdmin) return;
-      const file = document.getElementById('bg-file').files[0];
-      if (!file) return;
-      const form = new FormData();
-      form.append('file', file);
-      form.append('username', username);
-      form.append('password', localStorage.getItem('saved_password') || '');
-      await fetch(`${serverBaseUrl}/upload/background`, { method: 'POST', body: form });
-    });
-    document.getElementById('upload-music-btn').addEventListener('click', async () => {
-      if (!isAdmin) return;
-      const file = document.getElementById('music-file').files[0];
-      if (!file) return;
-      const form = new FormData();
-      form.append('file', file);
-      form.append('username', username);
-      form.append('password', localStorage.getItem('saved_password') || '');
-      await fetch(`${serverBaseUrl}/upload/music`, { method: 'POST', body: form });
-    });
+      for (const [k, v] of Object.entries(fields)) form.append(k, v);
+      const res = await fetch(`${getUploadBase()}${endpoint}`, { method: 'POST', body: form });
+      if (!res.ok) {
+        const text = await res.text().catch(() => 'Upload failed');
+        throw new Error(text || `Upload failed (${res.status})`);
+      }
+      return res.json().catch(() => ({}));
+    }
 
-    // Toggle upload modal visibility
-    document.getElementById('profile-file').addEventListener('click', () => uploadModal.classList.add('active'));
-    // For convenience, add a button in the UI to open upload modal. We'll add a small icon.
-    // (Not in the HTML yet, but can be added.)
+    async function uploadProfile() {
+      const file = dom.profileFileInput.files?.[0];
+      if (!file) throw new Error('Choose an image first.');
+      const result = await uploadFile('/upload/profile', file, { username: state.username || dom.loginUsername.value.trim() });
+      addSystemMessage(`Profile picture uploaded: ${result.url || file.name}`);
+      return result;
+    }
 
-    // ---------- Logout ----------
-    logoutBtn.addEventListener('click', () => {
-      ws.close();
-      location.reload();
-    });
+    async function uploadBackground() {
+      if (!state.isAdmin) throw new Error('Admin only.');
+      const file = dom.backgroundFileInput.files?.[0];
+      if (!file) throw new Error('Choose an image first.');
+      const result = await uploadFile('/upload/background', file, {
+        username: state.username,
+        password: gatherUploadPassword(),
+      });
+      addSystemMessage(`Background updated: ${result.url || file.name}`);
+      return result;
+    }
 
-    // ---------- Send Message ----------
-    sendBtn.addEventListener('click', sendMessage);
-    messageInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(); });
-    function sendMessage() {
-      const text = messageInput.value.trim();
+    async function uploadMusic() {
+      if (!state.isAdmin) throw new Error('Admin only.');
+      const file = dom.musicFileInput.files?.[0];
+      if (!file) throw new Error('Choose an MP3 first.');
+      const result = await uploadFile('/upload/music', file, {
+        username: state.username,
+        password: gatherUploadPassword(),
+      });
+      addSystemMessage(`Music uploaded: ${result.url || file.name}`);
+      return result;
+    }
+
+    function submitAiConfig() {
+      const payload = {
+        type: 'ai_config_update',
+        ai_name: dom.aiNameInput.value.trim(),
+        behavior: dom.aiBehaviorInput.value,
+        first_message: dom.aiFirstMessageInput.value,
+        reasoning_level: dom.aiReasoningInput.value,
+        show_reasoning: dom.aiShowReasoningInput.checked,
+        password: dom.aiPasswordInput.value,
+      };
+      if (!payload.ai_name) {
+        dom.aiModalError.textContent = 'AI name is required.';
+        return;
+      }
+      if (!payload.behavior.trim()) {
+        dom.aiModalError.textContent = 'Behavior is required.';
+        return;
+      }
+      if (!payload.password.trim()) {
+        // Password is optional, but if there is an existing session password, keep the field empty to avoid surprise.
+      }
+      const ok = send(payload);
+      if (!ok) {
+        dom.aiModalError.textContent = 'Socket is not ready yet.';
+        return;
+      }
+      closeOverlay(dom.aiModalOverlay);
+    }
+
+    function beginSessionUpload() {
+      const filename = dom.sessionPathInput.value.trim();
+      dom.sessionUploadError.textContent = '';
+      if (!filename) {
+        dom.sessionUploadError.textContent = 'Please provide a filename or path.';
+        return;
+      }
+      const ok = send({ type: 'upload_session_file', filename });
+      if (!ok) {
+        dom.sessionUploadError.textContent = 'Socket is not ready yet.';
+        return;
+      }
+      closeOverlay(dom.sessionUploadModalOverlay);
+      addSystemMessage(`Requested session upload: ${filename}`);
+    }
+
+    function submitAiNamePrompt() {
+      dom.aiNamePromptError.textContent = '';
+      const aiName = dom.aiNamePromptInput.value.trim();
+      if (!aiName) {
+        dom.aiNamePromptError.textContent = 'AI name is required.';
+        return;
+      }
+      if (!state.pendingUpload?.uploadId) {
+        dom.aiNamePromptError.textContent = 'No upload in progress.';
+        return;
+      }
+      const ok = send({ type: 'ai_name_response', upload_id: state.pendingUpload.uploadId, ai_name: aiName });
+      if (!ok) {
+        dom.aiNamePromptError.textContent = 'Socket is not ready yet.';
+        return;
+      }
+      addSystemMessage(`Uploading ${state.pendingUpload.filename || 'log'} with AI name ${aiName}.`);
+      state.pendingUpload = null;
+      closeOverlay(dom.aiNamePromptOverlay);
+    }
+
+    function openSetupScreen() {
+      dom.setupError.textContent = '';
+      dom.setupAiName.value = state.aiConfig.name && state.aiConfig.name !== '-' ? state.aiConfig.name : 'DEEPSEEK';
+      dom.setupBehavior.value = state.aiConfig.behavior || 'Helpful and intelligent.';
+      dom.setupFirstMessage.value = state.aiConfig.first_message || '';
+      dom.setupReasoning.value = state.aiConfig.reasoning_level || 'medium';
+      dom.setupShowReasoning.checked = Boolean(state.aiConfig.show_reasoning);
+      dom.setupPassword.value = '';
+      hide(dom.loginScreen);
+      show(dom.setupScreen);
+      hide(dom.appShell);
+    }
+
+    function submitSetup() {
+      const payload = {
+        type: 'ai_config_update',
+        ai_name: dom.setupAiName.value.trim(),
+        behavior: dom.setupBehavior.value,
+        first_message: dom.setupFirstMessage.value,
+        reasoning_level: dom.setupReasoning.value,
+        show_reasoning: dom.setupShowReasoning.checked,
+        password: dom.setupPassword.value,
+      };
+      if (!payload.ai_name) {
+        dom.setupError.textContent = 'AI name is required.';
+        return;
+      }
+      if (!payload.behavior.trim()) {
+        dom.setupError.textContent = 'Behavior is required.';
+        return;
+      }
+      if (!send(payload)) {
+        dom.setupError.textContent = 'Socket is not ready yet.';
+        return;
+      }
+      addSystemMessage(`Initial setup submitted for ${payload.ai_name}.`);
+      closeOverlay(dom.setupScreen);
+    }
+
+    function insertSlash(command) {
+      dom.messageInput.focus();
+      dom.messageInput.value = command;
+      autoResizeTextarea();
+    }
+
+    function sendCurrentMessage() {
+      const text = dom.messageInput.value.trim();
       if (!text) return;
-      send({ type: 'chat_message', message: text });
-      messageInput.value = '';
+      sendChat(text);
+      dom.messageInput.value = '';
+      autoResizeTextarea();
     }
 
-    // ---------- Initialization ----------
-    connectWebSocket();
+    function autoResizeTextarea() {
+      const ta = dom.messageInput;
+      ta.style.height = 'auto';
+      ta.style.height = Math.min(150, ta.scrollHeight) + 'px';
+    }
+
+    function boot() {
+      loadLocalCredentials();
+      connect();
+      hide(dom.appShell);
+      hide(dom.setupScreen);
+      show(dom.loginScreen);
+
+      dom.loginButton.addEventListener('click', login);
+      dom.loginUsername.addEventListener('keydown', (e) => { if (e.key === 'Enter') login(); });
+      dom.loginPassword.addEventListener('keydown', (e) => { if (e.key === 'Enter') login(); });
+
+      dom.setupSaveButton.addEventListener('click', submitSetup);
+      dom.openAiButton.addEventListener('click', openAiModal);
+      dom.openAiButton2.addEventListener('click', openAiModal);
+      dom.closeAiModal.addEventListener('click', () => closeOverlay(dom.aiModalOverlay));
+      dom.saveAiButton.addEventListener('click', submitAiConfig);
+
+      dom.openMediaButton.addEventListener('click', openMediaModal);
+      dom.openUploadBtn.addEventListener('click', openMediaModal);
+      dom.uploadProfileQuickBtn.addEventListener('click', openMediaModal);
+      dom.closeMediaModal.addEventListener('click', () => closeOverlay(dom.mediaModalOverlay));
+      dom.closeMediaButton.addEventListener('click', () => closeOverlay(dom.mediaModalOverlay));
+      dom.openProfilePickerBtn.addEventListener('click', () => dom.profileFileInput.click());
+      dom.sendProfileUploadBtn.addEventListener('click', async () => {
+        dom.mediaModalError.textContent = '';
+        try { await uploadProfile(); } catch (err) { dom.mediaModalError.textContent = err.message || String(err); }
+      });
+      dom.sendBackgroundUploadBtn.addEventListener('click', async () => {
+        dom.mediaModalError.textContent = '';
+        try { await uploadBackground(); } catch (err) { dom.mediaModalError.textContent = err.message || String(err); }
+      });
+      dom.sendMusicUploadBtn.addEventListener('click', async () => {
+        dom.mediaModalError.textContent = '';
+        try { await uploadMusic(); } catch (err) { dom.mediaModalError.textContent = err.message || String(err); }
+      });
+
+      dom.quickUploadSessionBtn.addEventListener('click', openSessionUploadModal);
+      dom.uploadSessionQuickBtn.addEventListener('click', openSessionUploadModal);
+      dom.closeSessionUploadModal.addEventListener('click', () => closeOverlay(dom.sessionUploadModalOverlay));
+      dom.beginSessionUploadBtn.addEventListener('click', beginSessionUpload);
+
+      dom.closeAiNamePrompt.addEventListener('click', () => { state.pendingUpload = null; closeOverlay(dom.aiNamePromptOverlay); });
+      dom.submitAiNamePromptBtn.addEventListener('click', submitAiNamePrompt);
+
+      dom.openGalleryBtn.addEventListener('click', () => setGalleryOpen(!dom.galleryDrawer.classList.contains('open')));
+      dom.closeGalleryBtn.addEventListener('click', () => setGalleryOpen(false));
+
+      dom.openLeftSidebar.addEventListener('click', () => toggleSidebar('left'));
+      dom.leftCloseBtn.addEventListener('click', () => toggleSidebar('left'));
+      dom.openRightSidebar.addEventListener('click', () => toggleSidebar('right'));
+      dom.rightCloseBtn.addEventListener('click', () => toggleSidebar('right'));
+
+      dom.logoutButton.addEventListener('click', () => {
+        try { state.ws?.close(); } catch {}
+        localStorage.removeItem('dr_password');
+        location.reload();
+      });
+
+      dom.commandChip.addEventListener('click', () => insertSlash('/'));
+      dom.commandChips.forEach(btn => btn.addEventListener('click', () => insertSlash(btn.dataset.command || '/')));
+      dom.openCommandsBtn.addEventListener('click', () => openOverlay(dom.commandHelpOverlay));
+      dom.closeCommandHelp.addEventListener('click', () => closeOverlay(dom.commandHelpOverlay));
+      dom.closeCommandHelp2.addEventListener('click', () => closeOverlay(dom.commandHelpOverlay));
+
+      dom.sendMessageBtn.addEventListener('click', sendCurrentMessage);
+      dom.messageInput.addEventListener('input', autoResizeTextarea);
+      dom.messageInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          sendCurrentMessage();
+        }
+      });
+
+      dom.musicPlayBtn.addEventListener('click', () => {
+        if (!state.isAdmin || !state.music.url) return;
+        sendMusicControl(state.music.playing ? 'pause' : 'play', { currentTime: dom.musicAudio.currentTime || 0 });
+      });
+      dom.musicLoopBtn.addEventListener('click', () => {
+        if (!state.isAdmin || !state.music.url) return;
+        sendMusicControl('loop', { loop: !state.music.loop });
+      });
+      dom.musicProgressTrack.addEventListener('click', (e) => {
+        if (!state.isAdmin || !state.music.url || !dom.musicAudio.duration) return;
+        const rect = dom.musicProgressTrack.getBoundingClientRect();
+        const fraction = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+        sendMusicControl('seek', { currentTime: dom.musicAudio.duration * fraction });
+      });
+      dom.musicAudio.addEventListener('timeupdate', () => {
+        if (dom.musicAudio.duration && !Number.isNaN(dom.musicAudio.duration)) {
+          const pct = Math.max(0, Math.min(100, (dom.musicAudio.currentTime / dom.musicAudio.duration) * 100));
+          dom.musicProgressFill.style.width = pct.toFixed(2) + '%';
+        }
+      });
+      dom.musicAudio.addEventListener('play', () => { dom.musicStateLabel.textContent = 'playing'; dom.musicPlayBtn.textContent = '⏸'; });
+      dom.musicAudio.addEventListener('pause', () => { dom.musicStateLabel.textContent = 'paused'; dom.musicPlayBtn.textContent = '▶'; });
+      dom.musicAudio.addEventListener('ended', () => {
+        if (!state.music.loop) dom.musicPlayBtn.textContent = '▶';
+      });
+
+      window.addEventListener('resize', () => {
+        if (window.innerWidth > 960) {
+          dom.leftSidebar.classList.remove('open');
+          dom.rightSidebar.classList.remove('open');
+        }
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          closeAllModals();
+          setGalleryOpen(false);
+          if (window.innerWidth <= 960) {
+            dom.leftSidebar.classList.remove('open');
+            dom.rightSidebar.classList.remove('open');
+          }
+        }
+      });
+
+      // Clicking the shaded overlay closes modal dialogs, but not the gallery drawer.
+      [dom.aiModalOverlay, dom.mediaModalOverlay, dom.sessionUploadModalOverlay, dom.aiNamePromptOverlay, dom.commandHelpOverlay].forEach(overlay => {
+        overlay.addEventListener('click', (e) => {
+          if (e.target === overlay) closeOverlay(overlay);
+        });
+      });
+
+      // Keep gallery count and badges sane on first render.
+      dom.galleryCount.textContent = '0 items';
+      dom.memberCount.textContent = '0 online';
+      dom.onlineCountBadge.textContent = '0';
+      dom.settingsBadge.textContent = '-';
+      autoResizeTextarea();
+    }
+
+    boot();
   </script>
 </body>
 </html>
