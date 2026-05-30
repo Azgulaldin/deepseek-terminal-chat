@@ -7,8 +7,8 @@
   <title>DeepSeek Roleplay</title>
   <style>
     :root {
-      --bg0: #090912;
-      --bg1: rgba(10, 10, 22, 0.72);
+      --bg0: #070812;
+      --bg1: rgba(10, 11, 22, 0.72);
       --bg2: rgba(255, 255, 255, 0.06);
       --stroke: rgba(255, 255, 255, 0.10);
       --stroke-2: rgba(255, 255, 255, 0.16);
@@ -27,7 +27,6 @@
       --radius-sm: 10px;
       --sidebar-w: 290px;
       --topbar-h: 64px;
-      --composer-h: 88px;
       --transition: 180ms ease;
     }
 
@@ -108,6 +107,7 @@
       border: 1px solid rgba(255,255,255,0.12);
       box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
       font-size: 18px;
+      flex: 0 0 auto;
     }
 
     .title-group {
@@ -141,6 +141,7 @@
       align-items: center;
       gap: 10px;
       min-width: 0;
+      flex-wrap: wrap;
     }
 
     .pill {
@@ -231,11 +232,11 @@
       scroll-behavior: smooth;
     }
 
-    .messages::-webkit-scrollbar, .list::-webkit-scrollbar, .drawer-body::-webkit-scrollbar {
+    .messages::-webkit-scrollbar, .list::-webkit-scrollbar, .drawer-body::-webkit-scrollbar, .modal-body::-webkit-scrollbar {
       width: 10px;
       height: 10px;
     }
-    .messages::-webkit-scrollbar-thumb, .list::-webkit-scrollbar-thumb, .drawer-body::-webkit-scrollbar-thumb {
+    .messages::-webkit-scrollbar-thumb, .list::-webkit-scrollbar-thumb, .drawer-body::-webkit-scrollbar-thumb, .modal-body::-webkit-scrollbar-thumb {
       background: rgba(255,255,255,0.12);
       border-radius: 999px;
       border: 2px solid transparent;
@@ -262,13 +263,13 @@
       background: rgba(255,255,255,0.06);
       box-shadow: 0 6px 18px rgba(0,0,0,0.18);
     }
-    .avatar.big { width: 44px; height: 44px; }
 
     .bubble-stack {
       display: flex;
       flex-direction: column;
       gap: 6px;
       max-width: min(760px, 100%);
+      min-width: 0;
     }
 
     .sender-line {
@@ -278,6 +279,7 @@
       font-size: 12px;
       color: var(--muted);
       padding: 0 8px;
+      flex-wrap: wrap;
     }
     .sender-line strong { color: var(--text); font-weight: 700; }
     .sender-line .role-tag {
@@ -326,6 +328,7 @@
       font-size: 11px;
       color: var(--subtle);
       padding: 0 8px;
+      flex-wrap: wrap;
     }
 
     .message-row.self .meta-row { justify-content: flex-end; }
@@ -526,6 +529,7 @@
       padding: 10px 0;
       color: var(--muted);
       font-size: 12px;
+      flex-wrap: wrap;
     }
 
     .toggle {
@@ -770,6 +774,12 @@
       line-height: 1.5;
       font-size: 13px;
     }
+
+    .muted-link {
+      color: var(--muted);
+      text-decoration: none;
+    }
+    .muted-link:hover { color: var(--text); }
 
     @media (max-width: 1180px) {
       .shell { grid-template-columns: 270px 1fr 280px; }
@@ -1249,23 +1259,23 @@
     </div>
   </div>
 
-  <audio id="musicAudio" preload="metadata"></audio>
+  <audio id="musicAudio" preload="metadata" playsinline></audio>
 
   <script>
     'use strict';
 
     const $ = (id) => document.getElementById(id);
-    const qs = (sel, root = document) => root.querySelector(sel);
     const qsa = (sel, root = document) => [...root.querySelectorAll(sel)];
     const escapeHtml = (s) => String(s ?? '').replace(/[&<>'"]/g, ch => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
     }[ch]));
-    const nowStamp = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const timestamp = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-    const fallbackAvatar = (seed) => {
-      const safe = encodeURIComponent(seed || '?');
-      const hue = Math.abs((seed || '').split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % 360;
-      return `data:image/svg+xml;utf8,` + encodeURIComponent(`
+    function fallbackAvatar(seed) {
+      const name = String(seed || '?');
+      const hue = Math.abs([...name].reduce((a, c) => a + c.charCodeAt(0), 0)) % 360;
+      const letter = encodeURIComponent((name.trim()[0] || '?').toUpperCase());
+      return `data:image/svg+xml;utf8,${encodeURIComponent(`
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
           <defs>
             <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
@@ -1274,8 +1284,125 @@
             </linearGradient>
           </defs>
           <circle cx="50" cy="50" r="50" fill="url(#g)"/>
-          <text x="50" y="60" text-anchor="middle" font-size="40" fill="white" font-family="Arial, sans-serif">${safe.slice(0,1).toUpperCase()}</text>
-        </svg>`);
+          <text x="50" y="60" text-anchor="middle" font-size="40" fill="white" font-family="Arial, sans-serif">${letter}</text>
+        </svg>`)}`
+    }
+
+    const dom = {
+      loginScreen: $('loginScreen'),
+      setupScreen: $('setupScreen'),
+      appShell: $('appShell'),
+
+      loginUsername: $('loginUsername'),
+      loginPassword: $('loginPassword'),
+      rememberPassword: $('rememberPassword'),
+      loginButton: $('loginButton'),
+      loginError: $('loginError'),
+      loginModeHint: $('loginModeHint'),
+
+      setupAiName: $('setupAiName'),
+      setupReasoning: $('setupReasoning'),
+      setupBehavior: $('setupBehavior'),
+      setupFirstMessage: $('setupFirstMessage'),
+      setupPassword: $('setupPassword'),
+      setupShowReasoning: $('setupShowReasoning'),
+      setupSaveButton: $('setupSaveButton'),
+      setupError: $('setupError'),
+
+      messages: $('messages'),
+      messageInput: $('messageInput'),
+      sendMessageBtn: $('sendMessageBtn'),
+      commandChip: $('commandChip'),
+      quickUploadSessionBtn: $('quickUploadSessionBtn'),
+
+      userList: $('userList'),
+      memberCount: $('memberCount'),
+      onlineCountBadge: $('onlineCountBadge'),
+      connectionText: $('connectionText'),
+      serverStatus: $('serverStatus'),
+      serverDot: $('serverDot'),
+      roleText: $('roleText'),
+      roomSubtitle: $('roomSubtitle'),
+      roomTitle: $('roomTitle'),
+      aiNamePill: $('aiNamePill'),
+      sessionIdText: $('sessionIdText'),
+      sessionIdRight: $('sessionIdRight'),
+      settingsBadge: $('settingsBadge'),
+      backgroundText: $('backgroundText'),
+      musicText: $('musicText'),
+      personaText: $('personaText'),
+      controlSubtitle: $('controlSubtitle'),
+
+      openAiButton: $('openAiButton'),
+      openAiButton2: $('openAiButton2'),
+      logoutButton: $('logoutButton'),
+      openLeftSidebar: $('openLeftSidebar'),
+      openRightSidebar: $('openRightSidebar'),
+      leftSidebar: $('leftSidebar'),
+      rightSidebar: $('rightSidebar'),
+      leftCloseBtn: $('leftCloseBtn'),
+      rightCloseBtn: $('rightCloseBtn'),
+
+      openGalleryBtn: $('openGalleryBtn'),
+      closeGalleryBtn: $('closeGalleryBtn'),
+      galleryDrawer: $('galleryDrawer'),
+      galleryGrid: $('galleryGrid'),
+      galleryCount: $('galleryCount'),
+
+      openUploadBtn: $('openUploadBtn'),
+      openMediaButton: $('openMediaButton'),
+      uploadProfileQuickBtn: $('uploadProfileQuickBtn'),
+      uploadSessionQuickBtn: $('uploadSessionQuickBtn'),
+
+      aiModalOverlay: $('aiModalOverlay'),
+      closeAiModal: $('closeAiModal'),
+      saveAiButton: $('saveAiButton'),
+      aiNameInput: $('aiNameInput'),
+      aiBehaviorInput: $('aiBehaviorInput'),
+      aiFirstMessageInput: $('aiFirstMessageInput'),
+      aiReasoningInput: $('aiReasoningInput'),
+      aiShowReasoningInput: $('aiShowReasoningInput'),
+      aiPasswordInput: $('aiPasswordInput'),
+      aiModalError: $('aiModalError'),
+
+      mediaModalOverlay: $('mediaModalOverlay'),
+      closeMediaModal: $('closeMediaModal'),
+      closeMediaButton: $('closeMediaButton'),
+      openProfilePickerBtn: $('openProfilePickerBtn'),
+      profileFileInput: $('profileFileInput'),
+      backgroundFileInput: $('backgroundFileInput'),
+      musicFileInput: $('musicFileInput'),
+      sendProfileUploadBtn: $('sendProfileUploadBtn'),
+      sendBackgroundUploadBtn: $('sendBackgroundUploadBtn'),
+      sendMusicUploadBtn: $('sendMusicUploadBtn'),
+      mediaModalError: $('mediaModalError'),
+
+      sessionUploadModalOverlay: $('sessionUploadModalOverlay'),
+      closeSessionUploadModal: $('closeSessionUploadModal'),
+      sessionPathInput: $('sessionPathInput'),
+      beginSessionUploadBtn: $('beginSessionUploadBtn'),
+      sessionUploadError: $('sessionUploadError'),
+
+      aiNamePromptOverlay: $('aiNamePromptOverlay'),
+      closeAiNamePrompt: $('closeAiNamePrompt'),
+      aiNamePromptInput: $('aiNamePromptInput'),
+      aiNamePromptFileLabel: $('aiNamePromptFileLabel'),
+      submitAiNamePromptBtn: $('submitAiNamePromptBtn'),
+      aiNamePromptError: $('aiNamePromptError'),
+
+      commandHelpOverlay: $('commandHelpOverlay'),
+      closeCommandHelp: $('closeCommandHelp'),
+      closeCommandHelp2: $('closeCommandHelp2'),
+      openCommandsBtn: $('openCommandsBtn'),
+
+      musicBar: $('musicBar'),
+      musicTitle: $('musicTitle'),
+      musicStateLabel: $('musicStateLabel'),
+      musicPlayBtn: $('musicPlayBtn'),
+      musicLoopBtn: $('musicLoopBtn'),
+      musicProgressTrack: $('musicProgressTrack'),
+      musicProgressFill: $('musicProgressFill'),
+      musicAudio: $('musicAudio'),
     };
 
     const state = {
@@ -1289,7 +1416,15 @@
       isAdmin: false,
       serverBaseUrl: '',
       serverReady: false,
-      aiConfig: { name: '-', behavior: '', first_message: '', reasoning_level: 'medium', show_reasoning: false, configured: false, admin_username: null },
+      aiConfig: {
+        name: '-',
+        behavior: '',
+        first_message: '',
+        reasoning_level: 'medium',
+        show_reasoning: false,
+        configured: false,
+        admin_username: null,
+      },
       history: [],
       sessionId: '',
       profilePics: {},
@@ -1297,67 +1432,22 @@
       gallery: [],
       backgroundUrl: '',
       music: { url: null, playing: false, currentTime: 0, loop: false, server_time: 0 },
-      pendingUpload: null,
       reconnectTimer: null,
       suppressScroll: false,
-      currentMusicUrl: null,
-    };
-
-    const dom = {
-      loginScreen: $('loginScreen'), setupScreen: $('setupScreen'), appShell: $('appShell'),
-      loginUsername: $('loginUsername'), loginPassword: $('loginPassword'), rememberPassword: $('rememberPassword'), loginButton: $('loginButton'), loginError: $('loginError'),
-      setupAiName: $('setupAiName'), setupReasoning: $('setupReasoning'), setupBehavior: $('setupBehavior'), setupFirstMessage: $('setupFirstMessage'), setupPassword: $('setupPassword'), setupShowReasoning: $('setupShowReasoning'), setupSaveButton: $('setupSaveButton'), setupError: $('setupError'),
-      messages: $('messages'), messageInput: $('messageInput'), sendMessageBtn: $('sendMessageBtn'), commandChip: $('commandChip'), quickUploadSessionBtn: $('quickUploadSessionBtn'),
-      userList: $('userList'), memberCount: $('memberCount'), onlineCountBadge: $('onlineCountBadge'),
-      connectionText: $('connectionText'), serverStatus: $('serverStatus'), serverDot: $('serverDot'), roleText: $('roleText'), roomSubtitle: $('roomSubtitle'), roomTitle: $('roomTitle'), aiNamePill: $('aiNamePill'), sessionIdText: $('sessionIdText'), sessionIdRight: $('sessionIdRight'), settingsBadge: $('settingsBadge'), backgroundText: $('backgroundText'), musicText: $('musicText'), personaText: $('personaText'),
-      openAiButton: $('openAiButton'), openAiButton2: $('openAiButton2'), logoutButton: $('logoutButton'),
-      leftSidebar: $('leftSidebar'), rightSidebar: $('rightSidebar'), openLeftSidebar: $('openLeftSidebar'), leftCloseBtn: $('leftCloseBtn'), openRightSidebar: $('openRightSidebar'), rightCloseBtn: $('rightCloseBtn'),
-      openGalleryBtn: $('openGalleryBtn'), closeGalleryBtn: $('closeGalleryBtn'), galleryDrawer: $('galleryDrawer'), galleryGrid: $('galleryGrid'), galleryCount: $('galleryCount'),
-      openUploadBtn: $('openUploadBtn'), openMediaButton: $('openMediaButton'), uploadProfileQuickBtn: $('uploadProfileQuickBtn'), uploadSessionQuickBtn: $('uploadSessionQuickBtn'),
-      aiModalOverlay: $('aiModalOverlay'), closeAiModal: $('closeAiModal'), saveAiButton: $('saveAiButton'), aiNameInput: $('aiNameInput'), aiBehaviorInput: $('aiBehaviorInput'), aiFirstMessageInput: $('aiFirstMessageInput'), aiReasoningInput: $('aiReasoningInput'), aiShowReasoningInput: $('aiShowReasoningInput'), aiPasswordInput: $('aiPasswordInput'), aiModalError: $('aiModalError'),
-      mediaModalOverlay: $('mediaModalOverlay'), closeMediaModal: $('closeMediaModal'), closeMediaButton: $('closeMediaButton'), openProfilePickerBtn: $('openProfilePickerBtn'), profileFileInput: $('profileFileInput'), backgroundFileInput: $('backgroundFileInput'), musicFileInput: $('musicFileInput'), sendProfileUploadBtn: $('sendProfileUploadBtn'), sendBackgroundUploadBtn: $('sendBackgroundUploadBtn'), sendMusicUploadBtn: $('sendMusicUploadBtn'), mediaModalError: $('mediaModalError'),
-      sessionUploadModalOverlay: $('sessionUploadModalOverlay'), closeSessionUploadModal: $('closeSessionUploadModal'), sessionPathInput: $('sessionPathInput'), beginSessionUploadBtn: $('beginSessionUploadBtn'), sessionUploadError: $('sessionUploadError'),
-      aiNamePromptOverlay: $('aiNamePromptOverlay'), closeAiNamePrompt: $('closeAiNamePrompt'), aiNamePromptInput: $('aiNamePromptInput'), aiNamePromptFileLabel: $('aiNamePromptFileLabel'), submitAiNamePromptBtn: $('submitAiNamePromptBtn'), aiNamePromptError: $('aiNamePromptError'),
-      commandHelpOverlay: $('commandHelpOverlay'), closeCommandHelp: $('closeCommandHelp'), closeCommandHelp2: $('closeCommandHelp2'),
-      musicBar: $('musicBar'), musicTitle: $('musicTitle'), musicStateLabel: $('musicStateLabel'), musicPlayBtn: $('musicPlayBtn'), musicLoopBtn: $('musicLoopBtn'), musicProgressTrack: $('musicProgressTrack'), musicProgressFill: $('musicProgressFill'), musicAudio: $('musicAudio'),
-      commandChips: qsa('.command-chip'),
+      awaitingAiName: null,
     };
 
     function show(el) { el.classList.remove('hidden'); }
     function hide(el) { el.classList.add('hidden'); }
     function openOverlay(el) { el.classList.add('show'); el.setAttribute('aria-hidden', 'false'); }
     function closeOverlay(el) { el.classList.remove('show'); el.setAttribute('aria-hidden', 'true'); }
-    function toastLine(text) {
-      if (!text) return;
-      addSystemMessage(String(text));
-    }
 
-    function setConnection(status, kind = 'warn') {
-      dom.connectionText.textContent = status;
-      dom.serverStatus.textContent = status;
+    function setConnection(text, kind = 'warn') {
+      dom.connectionText.textContent = text;
+      dom.serverStatus.textContent = text;
       dom.serverDot.classList.remove('ok', 'bad');
       if (kind === 'ok') dom.serverDot.classList.add('ok');
       if (kind === 'bad') dom.serverDot.classList.add('bad');
-    }
-
-    function saveLocalCredentials() {
-      if (dom.rememberPassword.checked) {
-        localStorage.setItem('dr_username', state.username || dom.loginUsername.value.trim());
-        localStorage.setItem('dr_password', state.password || dom.loginPassword.value);
-        localStorage.setItem('dr_remember', '1');
-      } else {
-        localStorage.setItem('dr_username', dom.loginUsername.value.trim());
-        localStorage.removeItem('dr_password');
-        localStorage.removeItem('dr_remember');
-      }
-    }
-
-    function loadLocalCredentials() {
-      const u = localStorage.getItem('dr_username') || '';
-      const p = localStorage.getItem('dr_password') || '';
-      dom.loginUsername.value = u;
-      dom.loginPassword.value = p;
-      dom.rememberPassword.checked = localStorage.getItem('dr_remember') === '1';
     }
 
     function wsUrl() {
@@ -1365,10 +1455,48 @@
       return `${proto}//${location.host}/ws`;
     }
 
-    function connect() {
-      if (state.connecting) return;
+    function localUrl(path) {
+      if (!path) return '';
+      if (/^https?:\/\//i.test(path)) return path;
+      if (!state.serverBaseUrl) return path;
+      return state.serverBaseUrl.replace(/\/$/, '') + path;
+    }
+
+    function serverFetchUrl(path) {
+      if (!state.serverBaseUrl) throw new Error('Server upload URL not ready yet.');
+      return state.serverBaseUrl.replace(/\/$/, '') + path;
+    }
+
+    function saveLocalCredentials() {
+      localStorage.setItem('dr_username', dom.loginUsername.value.trim());
+      if (dom.rememberPassword.checked) {
+        localStorage.setItem('dr_password', dom.loginPassword.value);
+        localStorage.setItem('dr_remember', '1');
+      } else {
+        localStorage.removeItem('dr_password');
+        localStorage.removeItem('dr_remember');
+      }
+    }
+
+    function loadLocalCredentials() {
+      dom.loginUsername.value = localStorage.getItem('dr_username') || '';
+      dom.loginPassword.value = localStorage.getItem('dr_password') || '';
+      dom.rememberPassword.checked = localStorage.getItem('dr_remember') === '1';
+      dom.loginModeHint.textContent = 'Local relay will connect to the server';
+      state.username = dom.loginUsername.value.trim();
+      state.password = dom.loginPassword.value;
+      state.rememberPassword = dom.rememberPassword.checked;
+    }
+
+    function send(payload) {
+      if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return false;
+      state.ws.send(JSON.stringify(payload));
+      return true;
+    }
+
+    function connectSocket() {
+      if (state.connecting || state.ws) return;
       state.connecting = true;
-      clearTimeout(state.reconnectTimer);
       setConnection('Connecting');
       try {
         const ws = new WebSocket(wsUrl());
@@ -1378,9 +1506,6 @@
           state.connecting = false;
           state.connected = true;
           setConnection('Connected', 'ok');
-          if (state.username) {
-            // Login is only sent explicitly after the user chooses credentials.
-          }
         };
 
         ws.onmessage = (event) => {
@@ -1396,13 +1521,13 @@
         ws.onclose = () => {
           state.connecting = false;
           state.connected = false;
-          setConnection('Disconnected', 'bad');
+          state.ws = null;
           if (state.username) scheduleReconnect();
+          setConnection('Disconnected', 'bad');
         };
       } catch (err) {
         state.connecting = false;
         setConnection(`Failed: ${err.message}`, 'bad');
-        scheduleReconnect();
       }
     }
 
@@ -1410,197 +1535,185 @@
       clearTimeout(state.reconnectTimer);
       state.reconnectTimer = setTimeout(() => {
         if (!state.username) return;
-        connect();
-        if (state.ws && state.ws.readyState === WebSocket.OPEN) {
-          send({ type: 'login', username: state.username, password: state.password, remember_password: state.rememberPassword });
-        }
+        connectSocket();
       }, 2500);
     }
 
-    function send(payload) {
-      if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return false;
-      state.ws.send(JSON.stringify(payload));
-      return true;
+    function clearMessages() {
+      dom.messages.innerHTML = '';
     }
 
-    function sendChat(text) {
-      const value = String(text || '').trim();
-      if (!value) return;
-      send({ type: 'chat_message', message: value });
-    }
-
-    function login() {
-      const username = dom.loginUsername.value.trim();
-      const password = dom.loginPassword.value;
-      const remember_password = dom.rememberPassword.checked;
-      dom.loginError.textContent = '';
-      if (!username) {
-        dom.loginError.textContent = 'Username is required.';
-        return;
-      }
-      state.username = username;
-      state.password = password;
-      state.rememberPassword = remember_password;
-      saveLocalCredentials();
-      if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {
-        connect();
-        setTimeout(() => send({ type: 'login', username, password, remember_password }), 180);
-      } else {
-        send({ type: 'login', username, password, remember_password });
-      }
-      setConnection('Authorizing');
-    }
-
-    function revealApp() {
-      hide(dom.loginScreen);
-      hide(dom.setupScreen);
-      show(dom.appShell);
+    function scrollToBottom() {
+      if (state.suppressScroll) return;
       requestAnimationFrame(() => {
-        if (window.innerWidth <= 960) {
-          dom.leftSidebar.classList.remove('open');
-          dom.rightSidebar.classList.remove('open');
-        }
+        dom.messages.scrollTop = dom.messages.scrollHeight;
       });
     }
 
-    function handleServerMessage(data) {
-      switch (data.type) {
-        case 'join_response':
-          if (data.accepted) {
-            state.role = data.role || 'user';
-            state.isAdmin = state.role === 'admin';
-            dom.roleText.textContent = state.role;
-            dom.roomSubtitle.textContent = `Connected as ${data.username || state.username}`;
-            dom.roomTitle.textContent = `DeepSeek Roleplay · ${data.username || state.username}`;
-            dom.aiNamePill.textContent = `AI: ${state.aiConfig.name || '-'}`;
-            saveLocalCredentials();
-            revealApp();
-          } else {
-            dom.loginError.textContent = data.reason || 'Login rejected.';
-            setConnection('Login failed', 'bad');
-          }
-          break;
+    function appendSystemMessage(message) {
+      const row = document.createElement('div');
+      row.className = 'message-row system';
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble';
+      bubble.textContent = message || '';
+      row.appendChild(bubble);
+      dom.messages.appendChild(row);
+      scrollToBottom();
+    }
 
-        case 'login_accepted':
-          state.role = data.role || state.role;
-          state.isAdmin = state.role === 'admin';
-          dom.roleText.textContent = state.role;
-          dom.roomSubtitle.textContent = `Connected as ${data.username || state.username}`;
-          dom.roomTitle.textContent = `DeepSeek Roleplay · ${data.username || state.username}`;
-          revealApp();
-          break;
+    function appendReasoning(sender, text) {
+      const row = document.createElement('div');
+      row.className = 'message-row';
+      const stack = document.createElement('div');
+      stack.className = 'bubble-stack';
 
-        case 'login_failed':
-          dom.loginError.textContent = data.reason || 'Login failed.';
-          setConnection('Login failed', 'bad');
-          break;
+      const senderLine = document.createElement('div');
+      senderLine.className = 'sender-line';
+      senderLine.innerHTML = `<strong>${escapeHtml(sender)}</strong><span class="role-tag">reasoning</span><span>${timestamp()}</span>`;
 
-        case 'server_info':
-          state.serverBaseUrl = data.upload_url || '';
-          state.serverReady = true;
-          setConnection('Ready', 'ok');
-          break;
+      const details = document.createElement('details');
+      details.className = 'reasoning-card';
+      details.open = Boolean(state.aiConfig.show_reasoning);
+      details.innerHTML = `<summary><span>Reasoning</span><span>▾</span></summary><div class="reasoning-body"></div>`;
+      details.querySelector('.reasoning-body').textContent = text || '';
 
-        case 'session_state':
-          applySessionState(data);
-          break;
+      stack.appendChild(senderLine);
+      stack.appendChild(details);
+      row.appendChild(stack);
+      dom.messages.appendChild(row);
+      scrollToBottom();
+    }
 
-        case 'chat':
-          appendChatMessage(data);
-          break;
+    function avatarFor(user) {
+      const url = state.profilePics[user];
+      if (url) return localUrl(url);
+      return fallbackAvatar(user);
+    }
 
-        case 'system':
-          addSystemMessage(data.message);
-          break;
+    function renderUsers() {
+      const users = Object.entries(state.users || {}).sort((a, b) => a[0].localeCompare(b[0]));
+      dom.userList.innerHTML = '';
+      dom.memberCount.textContent = `${users.length} online`;
+      dom.onlineCountBadge.textContent = String(users.length);
 
-        case 'reasoning':
-          addReasoningMessage(data.sender || 'AI', data.message || '');
-          break;
-
-        case 'profile_pic_update':
-          state.profilePics[data.username] = data.url;
-          renderUsers();
-          break;
-
-        case 'background_update':
-          setBackground(data.url || '');
-          break;
-
-        case 'music_state':
-          syncMusic(data);
-          break;
-
-        case 'new_image':
-          addGalleryItem(data.url, data.uploader);
-          break;
-
-        case 'user_joined':
-        case 'user_left':
-          if (data.type === 'user_joined') state.users[data.username] = data.role || 'user';
-          else delete state.users[data.username];
-          renderUsers();
-          break;
-
-        case 'ai_config_changed':
-          if (data.config) applyAiConfig(data.config);
-          addSystemMessage(`AI configuration updated to ${state.aiConfig.name}.`);
-          break;
-
-        case 'setup_required':
-          openSetupScreen();
-          break;
-
-        case 'new_session':
-          clearMessages();
-          addSystemMessage(data.message || 'New session started.');
-          break;
-
-        case 'ask_ai_name':
-          openAiNamePrompt(data.upload_id, data.filename);
-          break;
+      for (const [user, role] of users) {
+        const item = document.createElement('div');
+        item.className = 'user-item' + (user === state.username ? ' me' : '');
+        item.innerHTML = `
+          <img class="avatar" src="${avatarFor(user)}" alt="${escapeHtml(user)}" />
+          <div class="user-name">
+            <strong>${escapeHtml(user)}</strong>
+            <small>${user === state.username ? 'You' : 'Online'}</small>
+          </div>
+          <span class="role-pill">${escapeHtml(role || 'user')}</span>
+        `;
+        dom.userList.appendChild(item);
       }
     }
 
-    function normalizeStateEntry(entry) {
-      return {
-        role: entry.role || 'user',
-        sender: entry.sender || 'UNKNOWN',
-        content: entry.content || ''
+    function setBackground(url) {
+      state.backgroundUrl = url || '';
+      if (!state.backgroundUrl) {
+        document.body.style.backgroundImage = '';
+        dom.backgroundText.textContent = 'None';
+        return;
+      }
+      const full = localUrl(state.backgroundUrl);
+      document.body.style.backgroundImage =
+        `linear-gradient(135deg, rgba(7,7,18,0.72), rgba(7,7,18,0.42)), url("${full}")`;
+      dom.backgroundText.textContent = 'Active';
+    }
+
+    function updateMusicControls() {
+      const hasMusic = Boolean(state.music && state.music.url);
+      dom.musicBar.classList.toggle('hidden', !hasMusic);
+      dom.musicTitle.textContent = hasMusic ? (state.music.url.split('/').pop() || 'Loaded track') : 'No music loaded';
+      dom.musicText.textContent = hasMusic ? 'Loaded' : 'None';
+      dom.musicStateLabel.textContent = hasMusic ? (state.music.playing ? 'playing' : 'paused') : '';
+      dom.musicPlayBtn.textContent = state.music.playing ? '⏸' : '▶';
+      dom.musicLoopBtn.style.opacity = state.music.loop ? '1' : '0.55';
+      const durationGuess = dom.musicAudio.duration || 0;
+      const progress = durationGuess > 0 ? Math.max(0, Math.min(1, dom.musicAudio.currentTime / durationGuess)) : 0;
+      dom.musicProgressFill.style.width = `${Math.round(progress * 100)}%`;
+    }
+
+    function syncMusic(musicState) {
+      state.music = {
+        url: musicState.url || null,
+        playing: Boolean(musicState.playing),
+        currentTime: Number(musicState.currentTime || 0),
+        loop: Boolean(musicState.loop),
+        server_time: Number(musicState.server_time || 0),
       };
+
+      if (!state.music.url) {
+        dom.musicAudio.pause();
+        dom.musicAudio.removeAttribute('src');
+        dom.musicAudio.load();
+        updateMusicControls();
+        return;
+      }
+
+      const src = localUrl(state.music.url);
+      if (dom.musicAudio.src !== src) {
+        dom.musicAudio.src = src;
+        dom.musicAudio.load();
+      }
+
+      dom.musicAudio.loop = state.music.loop;
+
+      const now = Date.now() / 1000;
+      const elapsed = state.music.playing ? Math.max(0, now - state.music.server_time) : 0;
+      const target = Math.max(0, state.music.currentTime + elapsed);
+
+      const seekAndApply = () => {
+        try { dom.musicAudio.currentTime = target; } catch {}
+        if (state.music.playing) {
+          dom.musicAudio.play().catch(() => {});
+        } else {
+          dom.musicAudio.pause();
+        }
+        updateMusicControls();
+      };
+
+      if (dom.musicAudio.readyState >= 1) {
+        seekAndApply();
+      } else {
+        dom.musicAudio.onloadedmetadata = () => {
+          seekAndApply();
+          dom.musicAudio.onloadedmetadata = null;
+        };
+      }
+
+      updateMusicControls();
     }
 
-    function applySessionState(data) {
-      if (Array.isArray(data.history)) {
-        state.history = data.history.map(normalizeStateEntry);
-        clearMessages();
-        for (const entry of state.history) {
-          appendChatMessage({ sender: entry.sender, message: entry.content, replay: true, role: entry.role });
-        }
-      }
+    function addGalleryItem(url, uploader, timestampValue) {
+      if (!url) return;
+      const item = {
+        url,
+        uploader: uploader || 'unknown',
+        timestamp: timestampValue || new Date().toISOString(),
+      };
+      const existing = state.gallery.some((g) => g.url === item.url && g.timestamp === item.timestamp);
+      if (!existing) state.gallery.push(item);
+      renderGallery();
+    }
 
-      if (data.ai_config) applyAiConfig(data.ai_config);
-      if (data.admin_username && data.admin_username === state.username) state.isAdmin = true;
-      if (typeof data.background_url !== 'undefined') setBackground(data.background_url || '');
-      if (data.music_state) syncMusic(data.music_state);
-      if (data.profile_pics) {
-        state.profilePics = { ...data.profile_pics };
-        renderUsers();
+    function renderGallery() {
+      dom.galleryGrid.innerHTML = '';
+      dom.galleryCount.textContent = `${state.gallery.length} item${state.gallery.length === 1 ? '' : 's'}`;
+      for (const item of state.gallery.slice().reverse()) {
+        const thumb = document.createElement('div');
+        thumb.className = 'thumb';
+        const src = localUrl(item.url);
+        thumb.innerHTML = `
+          <img src="${src}" alt="${escapeHtml(item.uploader || 'image')}" />
+          <div class="caption">${escapeHtml(item.uploader || 'unknown')}</div>
+        `;
+        thumb.addEventListener('click', () => window.open(src, '_blank', 'noopener'));
+        dom.galleryGrid.appendChild(thumb);
       }
-      if (Array.isArray(data.gallery)) {
-        state.gallery = [];
-        dom.galleryGrid.innerHTML = '';
-        for (const item of data.gallery) addGalleryItem(item.url, item.uploader, item.timestamp);
-      }
-      if (data.online_users) {
-        state.users = { ...data.online_users };
-        renderUsers();
-      }
-      if (data.current_session_id) {
-        state.sessionId = data.current_session_id;
-        dom.sessionIdText.textContent = `Session: ${state.sessionId}`;
-        dom.sessionIdRight.textContent = state.sessionId;
-      }
-      updateUIVisibility();
     }
 
     function applyAiConfig(cfg) {
@@ -1617,69 +1730,324 @@
       dom.personaText.textContent = `${state.aiConfig.name} · ${state.aiConfig.reasoning_level}`;
       dom.settingsBadge.textContent = state.aiConfig.show_reasoning ? 'reasoning on' : 'reasoning off';
       if (state.username && state.aiConfig.admin_username === state.username) state.isAdmin = true;
-      updateUIVisibility();
+      dom.aiNameInput.value = state.aiConfig.name || '';
+      dom.aiBehaviorInput.value = state.aiConfig.behavior || '';
+      dom.aiFirstMessageInput.value = state.aiConfig.first_message || '';
+      dom.aiReasoningInput.value = state.aiConfig.reasoning_level || 'medium';
+      dom.aiShowReasoningInput.checked = Boolean(state.aiConfig.show_reasoning);
+      updateRoleVisibility();
     }
 
-    function updateUIVisibility() {
-      const admin = !!state.isAdmin;
-      if (admin) {
-        show(dom.openAiButton);
-        show(dom.openAiButton2);
-      } else {
-        hide(dom.openAiButton);
-        hide(dom.openAiButton2);
-      }
-      if (admin) {
-        show(dom.musicPlayBtn);
-        show(dom.musicLoopBtn);
-      } else {
-        hide(dom.musicPlayBtn);
-        hide(dom.musicLoopBtn);
-      }
-      dom.roleText.textContent = state.role || 'user';
+    function updateRoleVisibility() {
+      const admin = Boolean(state.isAdmin);
+      dom.openAiButton.classList.toggle('hidden', !admin);
+      dom.openAiButton2.classList.toggle('hidden', !admin);
+      dom.musicPlayBtn.classList.toggle('hidden', !admin && !state.music.url);
+      dom.musicLoopBtn.classList.toggle('hidden', !admin && !state.music.url);
+      dom.openMediaButton.textContent = admin ? 'Media uploads' : 'Media uploads';
       dom.backgroundText.textContent = state.backgroundUrl ? 'Active' : 'None';
-      dom.musicText.textContent = state.music?.url ? 'Loaded' : 'None';
+      dom.musicText.textContent = state.music.url ? 'Loaded' : 'None';
+
+      // Admin-only controls are still visible in the modal, but disabled for non-admin users.
+      dom.backgroundFileInput.disabled = !admin;
+      dom.musicFileInput.disabled = !admin;
+      dom.sendBackgroundUploadBtn.disabled = !admin;
+      dom.sendMusicUploadBtn.disabled = !admin;
+      dom.setupPassword.value = state.password || '';
+      dom.aiPasswordInput.value = state.password || '';
     }
 
-    function setBackground(url) {
-      state.backgroundUrl = url || '';
-      if (!state.serverBaseUrl || !url) {
-        document.body.style.backgroundImage = '';
-        dom.backgroundText.textContent = 'None';
+    function applySessionState(data) {
+      if (Array.isArray(data.history)) {
+        clearMessages();
+        state.history = data.history.map((entry) => ({
+          role: entry.role || 'user',
+          sender: entry.sender || 'UNKNOWN',
+          content: entry.content || '',
+        }));
+        for (const entry of state.history) {
+          appendChatMessage({ sender: entry.sender, message: entry.content, replay: true, role: entry.role });
+        }
+      }
+
+      if (data.ai_config) applyAiConfig(data.ai_config);
+      if (data.admin_username && data.admin_username === state.username) state.isAdmin = true;
+      if (typeof data.background_url !== 'undefined') setBackground(data.background_url || '');
+      if (data.music_state) syncMusic(data.music_state);
+      if (data.profile_pics) {
+        state.profilePics = { ...data.profile_pics };
+        renderUsers();
+      }
+      if (Array.isArray(data.gallery)) {
+        state.gallery = [];
+        for (const item of data.gallery) {
+          if (item && item.url) state.gallery.push({
+            url: item.url,
+            uploader: item.uploader || 'unknown',
+            timestamp: item.timestamp || new Date().toISOString(),
+          });
+        }
+        renderGallery();
+      }
+      if (data.online_users) {
+        state.users = { ...data.online_users };
+        renderUsers();
+      }
+      if (data.current_session_id) {
+        state.sessionId = data.current_session_id;
+        dom.sessionIdText.textContent = `Session: ${state.sessionId}`;
+        dom.sessionIdRight.textContent = state.sessionId;
+      }
+      updateRoleVisibility();
+    }
+
+    function showLogin() {
+      show(dom.loginScreen);
+      hide(dom.setupScreen);
+      hide(dom.appShell);
+      setConnection('Connecting');
+    }
+
+    function showApp() {
+      hide(dom.loginScreen);
+      hide(dom.setupScreen);
+      show(dom.appShell);
+      updateRoleVisibility();
+      if (window.innerWidth <= 960) {
+        dom.leftSidebar.classList.remove('open');
+        dom.rightSidebar.classList.remove('open');
+      }
+    }
+
+    function showSetup() {
+      hide(dom.loginScreen);
+      show(dom.setupScreen);
+      hide(dom.appShell);
+      dom.setupAiName.value = state.aiConfig.name || 'DEEPSEEK';
+      dom.setupBehavior.value = state.aiConfig.behavior || 'Helpful and intelligent.';
+      dom.setupReasoning.value = state.aiConfig.reasoning_level || 'medium';
+      dom.setupFirstMessage.value = state.aiConfig.first_message || '';
+      dom.setupPassword.value = state.password || '';
+      dom.setupShowReasoning.checked = Boolean(state.aiConfig.show_reasoning);
+    }
+
+    function openAiModal() {
+      dom.aiModalError.textContent = '';
+      dom.aiNameInput.value = state.aiConfig.name || 'DEEPSEEK';
+      dom.aiBehaviorInput.value = state.aiConfig.behavior || '';
+      dom.aiFirstMessageInput.value = state.aiConfig.first_message || '';
+      dom.aiReasoningInput.value = state.aiConfig.reasoning_level || 'medium';
+      dom.aiShowReasoningInput.checked = Boolean(state.aiConfig.show_reasoning);
+      dom.aiPasswordInput.value = state.password || '';
+      openOverlay(dom.aiModalOverlay);
+    }
+
+    function openMediaModal() {
+      dom.mediaModalError.textContent = '';
+      dom.profileFileInput.value = '';
+      dom.backgroundFileInput.value = '';
+      dom.musicFileInput.value = '';
+      updateRoleVisibility();
+      openOverlay(dom.mediaModalOverlay);
+    }
+
+    function openSessionUploadModal() {
+      dom.sessionUploadError.textContent = '';
+      dom.sessionPathInput.value = '';
+      openOverlay(dom.sessionUploadModalOverlay);
+    }
+
+    function openAiNamePrompt(uploadId, filename) {
+      state.awaitingAiName = { uploadId, filename };
+      dom.aiNamePromptError.textContent = '';
+      dom.aiNamePromptInput.value = state.aiConfig.name || 'DEEPSEEK';
+      dom.aiNamePromptFileLabel.textContent = filename ? `Importing: ${filename}` : 'Importing session log.';
+      openOverlay(dom.aiNamePromptOverlay);
+    }
+
+    function sendChat(value) {
+      const text = String(value || '').trim();
+      if (!text) return;
+      if (!send({ type: 'chat_message', message: text })) {
+        appendSystemMessage('Not connected to the local relay yet.');
         return;
       }
-      const full = state.serverBaseUrl + url;
-      document.body.style.backgroundImage = `linear-gradient(135deg, rgba(7,7,18,0.72), rgba(7,7,18,0.42)), url('${full}')`;
-      dom.backgroundText.textContent = 'Active';
+      dom.messageInput.value = '';
+      autoSizeComposer();
     }
 
-    function avatarFor(user) {
-      if (state.profilePics[user]) return state.serverBaseUrl ? state.serverBaseUrl + state.profilePics[user] : state.profilePics[user];
-      return fallbackAvatar(user);
-    }
+    function login() {
+      const username = dom.loginUsername.value.trim();
+      const password = dom.loginPassword.value;
+      const remember_password = dom.rememberPassword.checked;
+      dom.loginError.textContent = '';
 
-    function renderUsers() {
-      const users = Object.entries(state.users || {});
-      dom.userList.innerHTML = '';
-      dom.memberCount.textContent = `${users.length} online`;
-      dom.onlineCountBadge.textContent = String(users.length);
-      for (const [user, role] of users.sort((a, b) => a[0].localeCompare(b[0]))) {
-        const item = document.createElement('div');
-        item.className = 'user-item' + (user === state.username ? ' me' : '');
-        item.innerHTML = `
-          <img class="avatar" src="${avatarFor(user)}" alt="${escapeHtml(user)}" />
-          <div class="user-name">
-            <strong>${escapeHtml(user)}</strong>
-            <small>${user === state.username ? 'You' : 'Online'}</small>
-          </div>
-          <span class="role-pill">${escapeHtml(role || 'user')}</span>
-        `;
-        dom.userList.appendChild(item);
+      if (!username) {
+        dom.loginError.textContent = 'Username is required.';
+        return;
       }
+
+      state.username = username;
+      state.password = password;
+      state.rememberPassword = remember_password;
+      saveLocalCredentials();
+
+      if (!state.ws || state.ws.readyState !== WebSocket.OPEN) connectSocket();
+      const timer = setInterval(() => {
+        if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+          clearInterval(timer);
+          send({ type: 'login', username, password, remember_password });
+          setConnection('Authorizing');
+        }
+      }, 50);
+
+      setTimeout(() => clearInterval(timer), 2500);
     }
 
-    function clearMessages() {
-      dom.messages.innerHTML = '';
+    function logout() {
+      state.username = '';
+      state.password = '';
+      state.rememberPassword = false;
+      state.role = 'user';
+      state.isAdmin = false;
+      state.history = [];
+      state.users = {};
+      state.gallery = [];
+      state.profilePics = {};
+      state.backgroundUrl = '';
+      state.sessionId = '';
+      state.serverBaseUrl = '';
+      state.serverReady = false;
+      state.aiConfig = {
+        name: '-',
+        behavior: '',
+        first_message: '',
+        reasoning_level: 'medium',
+        show_reasoning: false,
+        configured: false,
+        admin_username: null,
+      };
+      state.music = { url: null, playing: false, currentTime: 0, loop: false, server_time: 0 };
+      clearTimeout(state.reconnectTimer);
+      if (state.ws) {
+        try { state.ws.close(); } catch {}
+      }
+      state.ws = null;
+      dom.loginPassword.value = localStorage.getItem('dr_remember') === '1' ? (localStorage.getItem('dr_password') || '') : '';
+      dom.loginUsername.value = localStorage.getItem('dr_username') || '';
+      dom.loginError.textContent = '';
+      clearMessages();
+      setBackground('');
+      renderUsers();
+      renderGallery();
+      updateMusicControls();
+      updateRoleVisibility();
+      showLogin();
+      setConnection('Disconnected', 'bad');
+    }
+
+    function handleServerMessage(data) {
+      switch (data.type) {
+        case 'join_response':
+          if (!data.accepted) {
+            dom.loginError.textContent = data.reason || 'Login rejected.';
+            setConnection('Login failed', 'bad');
+            break;
+          }
+          state.role = data.role || 'user';
+          state.isAdmin = state.role === 'admin';
+          dom.roleText.textContent = state.role;
+          dom.roomSubtitle.textContent = `Connected as ${data.username || state.username}`;
+          dom.roomTitle.textContent = `DeepSeek Roleplay · ${data.username || state.username}`;
+          showApp();
+          updateRoleVisibility();
+          break;
+
+        case 'login_accepted':
+          state.role = data.role || state.role;
+          state.isAdmin = state.role === 'admin';
+          dom.roleText.textContent = state.role;
+          dom.roomSubtitle.textContent = `Connected as ${data.username || state.username}`;
+          dom.roomTitle.textContent = `DeepSeek Roleplay · ${data.username || state.username}`;
+          showApp();
+          updateRoleVisibility();
+          break;
+
+        case 'login_failed':
+          dom.loginError.textContent = data.reason || 'Login failed.';
+          setConnection('Login failed', 'bad');
+          break;
+
+        case 'server_info':
+          state.serverBaseUrl = data.upload_url || '';
+          state.serverReady = true;
+          setConnection('Ready', 'ok');
+          break;
+
+        case 'setup_required':
+          showSetup();
+          break;
+
+        case 'session_state':
+          applySessionState(data);
+          showApp();
+          break;
+
+        case 'chat':
+          appendChatMessage(data);
+          break;
+
+        case 'system':
+          appendSystemMessage(data.message || '');
+          break;
+
+        case 'reasoning':
+          appendReasoning(data.sender || 'AI', data.message || '');
+          break;
+
+        case 'profile_pic_update':
+          if (data.username && data.url) {
+            state.profilePics[data.username] = data.url;
+            renderUsers();
+          }
+          break;
+
+        case 'background_update':
+          setBackground(data.url || '');
+          break;
+
+        case 'music_state':
+          syncMusic(data);
+          break;
+
+        case 'new_image':
+          addGalleryItem(data.url, data.uploader, data.timestamp);
+          break;
+
+        case 'user_joined':
+          if (data.username) state.users[data.username] = data.role || 'user';
+          renderUsers();
+          break;
+
+        case 'user_left':
+          if (data.username) delete state.users[data.username];
+          renderUsers();
+          break;
+
+        case 'ai_config_changed':
+          if (data.config) applyAiConfig(data.config);
+          appendSystemMessage(`AI configuration updated to ${state.aiConfig.name}.`);
+          break;
+
+        case 'new_session':
+          clearMessages();
+          appendSystemMessage(data.message || 'New session started.');
+          break;
+
+        case 'ask_ai_name':
+          openAiNamePrompt(data.upload_id, data.filename);
+          break;
+      }
     }
 
     function appendChatMessage(data) {
@@ -1687,20 +2055,10 @@
       const message = data.message ?? '';
       const replay = Boolean(data.replay);
       const isSelf = sender === state.username;
-      const isSystem = sender === 'SYSTEM' || data.type === 'system';
+      const role = data.role || state.users[sender] || (isSelf ? 'you' : 'user');
 
       const row = document.createElement('div');
-      row.className = 'message-row' + (isSelf ? ' self' : '') + (isSystem ? ' system' : '') + (replay ? ' replay' : '');
-
-      if (isSystem) {
-        const bubble = document.createElement('div');
-        bubble.className = 'bubble';
-        bubble.textContent = message;
-        row.appendChild(bubble);
-        dom.messages.appendChild(row);
-        scrollMessagesToBottom();
-        return;
-      }
+      row.className = 'message-row' + (isSelf ? ' self' : '') + (replay ? ' replay' : '');
 
       const avatar = document.createElement('img');
       avatar.className = 'avatar';
@@ -1712,7 +2070,7 @@
 
       const senderLine = document.createElement('div');
       senderLine.className = 'sender-line';
-      senderLine.innerHTML = `<strong>${escapeHtml(sender)}</strong><span class="role-tag">${escapeHtml(isSelf ? 'you' : (data.role || (state.users[sender] || 'user')))}</span><span>${nowStamp()}</span>${replay ? '<span class="role-tag">replay</span>' : ''}`;
+      senderLine.innerHTML = `<strong>${escapeHtml(sender)}</strong><span class="role-tag">${escapeHtml(role)}</span><span>${timestamp()}</span>${replay ? '<span class="role-tag">replay</span>' : ''}`;
 
       const bubble = document.createElement('div');
       bubble.className = 'bubble';
@@ -1720,446 +2078,283 @@
 
       stack.appendChild(senderLine);
       stack.appendChild(bubble);
-      row.appendChild(isSelf ? stack : avatar);
-      row.appendChild(isSelf ? avatar : stack);
+
+      if (isSelf) {
+        row.appendChild(stack);
+        row.appendChild(avatar);
+      } else {
+        row.appendChild(avatar);
+        row.appendChild(stack);
+      }
+
       dom.messages.appendChild(row);
-      scrollMessagesToBottom();
+      scrollToBottom();
     }
 
-    function addSystemMessage(text) {
-      const row = document.createElement('div');
-      row.className = 'message-row system';
-      const bubble = document.createElement('div');
-      bubble.className = 'bubble';
-      bubble.textContent = text || '';
-      row.appendChild(bubble);
-      dom.messages.appendChild(row);
-      scrollMessagesToBottom();
+    function normalizeFilePath(input) {
+      const value = String(input || '').trim();
+      if (!value) return '';
+      return value.replace(/\\/g, '/');
     }
 
-    function addReasoningMessage(sender, text) {
-      const row = document.createElement('div');
-      row.className = 'message-row';
-      const stack = document.createElement('div');
-      stack.className = 'bubble-stack';
-      const senderLine = document.createElement('div');
-      senderLine.className = 'sender-line';
-      senderLine.innerHTML = `<strong>${escapeHtml(sender)}</strong><span class="role-tag">reasoning</span><span>${nowStamp()}</span>`;
-      const details = document.createElement('details');
-      details.className = 'reasoning-card';
-      details.open = Boolean(state.aiConfig.show_reasoning);
-      details.innerHTML = `<summary><span>Reasoning</span><span>▾</span></summary><div class="reasoning-body"></div>`;
-      details.querySelector('.reasoning-body').textContent = text || '';
-      stack.appendChild(senderLine);
-      stack.appendChild(details);
-      row.appendChild(stack);
-      dom.messages.appendChild(row);
-      scrollMessagesToBottom();
-    }
+    async function uploadImage(kind) {
+      const file =
+        kind === 'profile' ? dom.profileFileInput.files[0] :
+        kind === 'background' ? dom.backgroundFileInput.files[0] :
+        dom.musicFileInput.files[0];
 
-    function scrollMessagesToBottom() {
-      if (state.suppressScroll) return;
-      requestAnimationFrame(() => {
-        dom.messages.scrollTop = dom.messages.scrollHeight;
-      });
-    }
-
-    function gatherUploadPassword() {
-      return state.password || dom.loginPassword.value || localStorage.getItem('dr_password') || '';
-    }
-
-    function openAiModal() {
-      dom.aiModalError.textContent = '';
-      dom.aiNameInput.value = state.aiConfig.name || '';
-      dom.aiBehaviorInput.value = state.aiConfig.behavior || '';
-      dom.aiFirstMessageInput.value = state.aiConfig.first_message || '';
-      dom.aiReasoningInput.value = state.aiConfig.reasoning_level || 'medium';
-      dom.aiShowReasoningInput.checked = Boolean(state.aiConfig.show_reasoning);
-      dom.aiPasswordInput.value = gatherUploadPassword();
-      openOverlay(dom.aiModalOverlay);
-    }
-
-    function openMediaModal() {
-      dom.mediaModalError.textContent = '';
-      openOverlay(dom.mediaModalOverlay);
-    }
-
-    function openSessionUploadModal() {
-      dom.sessionUploadError.textContent = '';
-      dom.sessionPathInput.value = '';
-      openOverlay(dom.sessionUploadModalOverlay);
-    }
-
-    function openAiNamePrompt(uploadId, filename) {
-      state.pendingUpload = { uploadId, filename };
-      dom.aiNamePromptError.textContent = '';
-      dom.aiNamePromptInput.value = state.aiConfig.name || 'DEEPSEEK';
-      dom.aiNamePromptFileLabel.textContent = `Upload source: ${filename || 'unknown file'}`;
-      openOverlay(dom.aiNamePromptOverlay);
-    }
-
-    function closeAllModals() {
-      [dom.aiModalOverlay, dom.mediaModalOverlay, dom.sessionUploadModalOverlay, dom.aiNamePromptOverlay, dom.commandHelpOverlay].forEach(closeOverlay);
-    }
-
-    function toggleSidebar(side) {
-      if (window.innerWidth > 960) return;
-      if (side === 'left') dom.leftSidebar.classList.toggle('open');
-      if (side === 'right') dom.rightSidebar.classList.toggle('open');
-    }
-
-    function ensureMediaUrl(url) {
-      if (!url) return '';
-      if (/^https?:\/\//i.test(url)) return url;
-      return state.serverBaseUrl + url;
-    }
-
-    function addGalleryItem(url, uploader, timestamp) {
-      const full = ensureMediaUrl(url);
-      if (!full) return;
-      if (state.gallery.some(x => x.url === full)) return;
-      state.gallery.push({ url: full, uploader: uploader || 'unknown', timestamp: timestamp || '' });
-      const tile = document.createElement('div');
-      tile.className = 'thumb';
-      tile.innerHTML = `
-        <img src="${full}" alt="gallery item" />
-        <div class="caption">${escapeHtml(uploader || 'unknown')}</div>
-      `;
-      tile.addEventListener('click', () => window.open(full, '_blank', 'noopener'));
-      dom.galleryGrid.appendChild(tile);
-      dom.galleryCount.textContent = `${state.gallery.length} items`;
-    }
-
-    function setGalleryOpen(open) {
-      dom.galleryDrawer.classList.toggle('open', open);
-    }
-
-    function syncMusic(payload) {
-      state.music = {
-        url: payload.url || null,
-        playing: Boolean(payload.playing),
-        currentTime: Number(payload.currentTime || 0),
-        loop: Boolean(payload.loop),
-        server_time: Number(payload.server_time || 0),
-      };
-
-      if (!state.music.url) {
-        hide(dom.musicBar);
-        dom.musicText.textContent = 'None';
-        dom.musicTitle.textContent = 'No music loaded';
-        dom.musicStateLabel.textContent = '';
-        dom.musicProgressFill.style.width = '0%';
-        dom.musicAudio.pause();
-        dom.musicAudio.removeAttribute('src');
-        state.currentMusicUrl = null;
+      if (!file) {
+        dom.mediaModalError.textContent = 'Choose a file first.';
+        return;
+      }
+      if (!state.serverBaseUrl) {
+        dom.mediaModalError.textContent = 'Server upload URL is not ready yet.';
         return;
       }
 
-      show(dom.musicBar);
-      dom.musicText.textContent = 'Loaded';
-      const name = String(state.music.url).split('/').pop() || 'Music';
-      dom.musicTitle.textContent = name;
-      dom.musicStateLabel.textContent = state.music.playing ? 'playing' : 'paused';
-      dom.musicAudio.loop = state.music.loop;
-      dom.musicLoopBtn.textContent = state.music.loop ? '↻' : '↺';
-
-      const fullUrl = ensureMediaUrl(state.music.url);
-      if (state.currentMusicUrl !== fullUrl) {
-        state.currentMusicUrl = fullUrl;
-        dom.musicAudio.src = fullUrl;
-      }
-
-      if (state.music.playing) {
-        const elapsed = Math.max(0, (Date.now() / 1000) - state.music.server_time);
-        const target = Math.max(0, state.music.currentTime + elapsed);
-        if (!Number.isNaN(target)) {
-          try { dom.musicAudio.currentTime = target; } catch {}
-        }
-        dom.musicAudio.play().catch(() => {});
-        dom.musicPlayBtn.textContent = '⏸';
-      } else {
-        dom.musicAudio.pause();
-        try { dom.musicAudio.currentTime = state.music.currentTime; } catch {}
-        dom.musicPlayBtn.textContent = '▶';
-      }
-      updateUIVisibility();
-    }
-
-    function sendMusicControl(action, extra = {}) {
-      send({ type: 'music_control', action, ...extra });
-    }
-
-    function getUploadBase() {
-      return state.serverBaseUrl || `${location.protocol}//${location.host}`;
-    }
-
-    async function uploadFile(endpoint, file, fields = {}) {
       const form = new FormData();
       form.append('file', file);
-      for (const [k, v] of Object.entries(fields)) form.append(k, v);
-      const res = await fetch(`${getUploadBase()}${endpoint}`, { method: 'POST', body: form });
-      if (!res.ok) {
-        const text = await res.text().catch(() => 'Upload failed');
-        throw new Error(text || `Upload failed (${res.status})`);
+      form.append('username', state.username);
+      if (kind !== 'profile') form.append('password', state.password || '');
+
+      const path =
+        kind === 'profile' ? '/upload/profile' :
+        kind === 'background' ? '/upload/background' :
+        '/upload/music';
+
+      try {
+        const res = await fetch(serverFetchUrl(path), { method: 'POST', body: form });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || `Upload failed (${res.status})`);
+        dom.mediaModalError.textContent = `${kind} uploaded.`;
+        appendSystemMessage(`${kind[0].toUpperCase() + kind.slice(1)} uploaded.`);
+      } catch (err) {
+        dom.mediaModalError.textContent = err.message || 'Upload failed.';
       }
-      return res.json().catch(() => ({}));
     }
 
-    async function uploadProfile() {
-      const file = dom.profileFileInput.files?.[0];
-      if (!file) throw new Error('Choose an image first.');
-      const result = await uploadFile('/upload/profile', file, { username: state.username || dom.loginUsername.value.trim() });
-      addSystemMessage(`Profile picture uploaded: ${result.url || file.name}`);
-      return result;
-    }
-
-    async function uploadBackground() {
-      if (!state.isAdmin) throw new Error('Admin only.');
-      const file = dom.backgroundFileInput.files?.[0];
-      if (!file) throw new Error('Choose an image first.');
-      const result = await uploadFile('/upload/background', file, {
-        username: state.username,
-        password: gatherUploadPassword(),
-      });
-      addSystemMessage(`Background updated: ${result.url || file.name}`);
-      return result;
-    }
-
-    async function uploadMusic() {
-      if (!state.isAdmin) throw new Error('Admin only.');
-      const file = dom.musicFileInput.files?.[0];
-      if (!file) throw new Error('Choose an MP3 first.');
-      const result = await uploadFile('/upload/music', file, {
-        username: state.username,
-        password: gatherUploadPassword(),
-      });
-      addSystemMessage(`Music uploaded: ${result.url || file.name}`);
-      return result;
-    }
-
-    function submitAiConfig() {
+    function sendAiConfig() {
       const payload = {
         type: 'ai_config_update',
         ai_name: dom.aiNameInput.value.trim(),
-        behavior: dom.aiBehaviorInput.value,
-        first_message: dom.aiFirstMessageInput.value,
+        behavior: dom.aiBehaviorInput.value.trim(),
+        first_message: dom.aiFirstMessageInput.value.trim(),
         reasoning_level: dom.aiReasoningInput.value,
         show_reasoning: dom.aiShowReasoningInput.checked,
         password: dom.aiPasswordInput.value,
       };
+
       if (!payload.ai_name) {
         dom.aiModalError.textContent = 'AI name is required.';
         return;
       }
-      if (!payload.behavior.trim()) {
-        dom.aiModalError.textContent = 'Behavior is required.';
+      if (!send(payload)) {
+        dom.aiModalError.textContent = 'Not connected yet.';
         return;
       }
-      if (!payload.password.trim()) {
-        // Password is optional, but if there is an existing session password, keep the field empty to avoid surprise.
-      }
-      const ok = send(payload);
-      if (!ok) {
-        dom.aiModalError.textContent = 'Socket is not ready yet.';
-        return;
-      }
+      state.password = payload.password || state.password;
+      saveLocalCredentials();
       closeOverlay(dom.aiModalOverlay);
     }
 
-    function beginSessionUpload() {
-      const filename = dom.sessionPathInput.value.trim();
-      dom.sessionUploadError.textContent = '';
-      if (!filename) {
-        dom.sessionUploadError.textContent = 'Please provide a filename or path.';
-        return;
-      }
-      const ok = send({ type: 'upload_session_file', filename });
-      if (!ok) {
-        dom.sessionUploadError.textContent = 'Socket is not ready yet.';
-        return;
-      }
-      closeOverlay(dom.sessionUploadModalOverlay);
-      addSystemMessage(`Requested session upload: ${filename}`);
-    }
-
-    function submitAiNamePrompt() {
-      dom.aiNamePromptError.textContent = '';
-      const aiName = dom.aiNamePromptInput.value.trim();
-      if (!aiName) {
-        dom.aiNamePromptError.textContent = 'AI name is required.';
-        return;
-      }
-      if (!state.pendingUpload?.uploadId) {
-        dom.aiNamePromptError.textContent = 'No upload in progress.';
-        return;
-      }
-      const ok = send({ type: 'ai_name_response', upload_id: state.pendingUpload.uploadId, ai_name: aiName });
-      if (!ok) {
-        dom.aiNamePromptError.textContent = 'Socket is not ready yet.';
-        return;
-      }
-      addSystemMessage(`Uploading ${state.pendingUpload.filename || 'log'} with AI name ${aiName}.`);
-      state.pendingUpload = null;
-      closeOverlay(dom.aiNamePromptOverlay);
-    }
-
-    function openSetupScreen() {
-      dom.setupError.textContent = '';
-      dom.setupAiName.value = state.aiConfig.name && state.aiConfig.name !== '-' ? state.aiConfig.name : 'DEEPSEEK';
-      dom.setupBehavior.value = state.aiConfig.behavior || 'Helpful and intelligent.';
-      dom.setupFirstMessage.value = state.aiConfig.first_message || '';
-      dom.setupReasoning.value = state.aiConfig.reasoning_level || 'medium';
-      dom.setupShowReasoning.checked = Boolean(state.aiConfig.show_reasoning);
-      dom.setupPassword.value = '';
-      hide(dom.loginScreen);
-      show(dom.setupScreen);
-      hide(dom.appShell);
-    }
-
-    function submitSetup() {
+    function sendSetupConfig() {
       const payload = {
         type: 'ai_config_update',
         ai_name: dom.setupAiName.value.trim(),
-        behavior: dom.setupBehavior.value,
-        first_message: dom.setupFirstMessage.value,
+        behavior: dom.setupBehavior.value.trim(),
+        first_message: dom.setupFirstMessage.value.trim(),
         reasoning_level: dom.setupReasoning.value,
         show_reasoning: dom.setupShowReasoning.checked,
         password: dom.setupPassword.value,
       };
+
       if (!payload.ai_name) {
         dom.setupError.textContent = 'AI name is required.';
         return;
       }
-      if (!payload.behavior.trim()) {
-        dom.setupError.textContent = 'Behavior is required.';
-        return;
-      }
       if (!send(payload)) {
-        dom.setupError.textContent = 'Socket is not ready yet.';
+        dom.setupError.textContent = 'Not connected yet.';
         return;
       }
-      addSystemMessage(`Initial setup submitted for ${payload.ai_name}.`);
+      state.password = payload.password || state.password;
+      saveLocalCredentials();
       closeOverlay(dom.setupScreen);
     }
 
-    function insertSlash(command) {
-      dom.messageInput.focus();
-      dom.messageInput.value = command;
-      autoResizeTextarea();
+    function beginSessionUpload() {
+      const filename = normalizeFilePath(dom.sessionPathInput.value);
+      if (!filename) {
+        dom.sessionUploadError.textContent = 'Enter a path or filename.';
+        return;
+      }
+      const ok = send({ type: 'upload_session_file', filename });
+      if (!ok) {
+        dom.sessionUploadError.textContent = 'Not connected to the relay.';
+        return;
+      }
+      closeOverlay(dom.sessionUploadModalOverlay);
     }
 
-    function sendCurrentMessage() {
-      const text = dom.messageInput.value.trim();
-      if (!text) return;
-      sendChat(text);
-      dom.messageInput.value = '';
-      autoResizeTextarea();
+    function submitAiNamePrompt() {
+      const ai_name = dom.aiNamePromptInput.value.trim();
+      if (!state.awaitingAiName || !ai_name) {
+        dom.aiNamePromptError.textContent = 'AI name is required.';
+        return;
+      }
+      const { uploadId } = state.awaitingAiName;
+      const ok = send({ type: 'ai_name_response', upload_id: uploadId, ai_name });
+      if (!ok) {
+        dom.aiNamePromptError.textContent = 'Not connected to the relay.';
+        return;
+      }
+      state.awaitingAiName = null;
+      closeOverlay(dom.aiNamePromptOverlay);
     }
 
-    function autoResizeTextarea() {
+    function autoSizeComposer() {
       const ta = dom.messageInput;
-      ta.style.height = 'auto';
-      ta.style.height = Math.min(150, ta.scrollHeight) + 'px';
+      ta.style.height = '0px';
+      ta.style.height = Math.min(150, Math.max(44, ta.scrollHeight)) + 'px';
     }
 
-    function boot() {
-      loadLocalCredentials();
-      connect();
-      hide(dom.appShell);
-      hide(dom.setupScreen);
-      show(dom.loginScreen);
+    function toggleGallery(open) {
+      dom.galleryDrawer.classList.toggle('open', open);
+    }
 
+    function toggleSidebar(side, open) {
+      const el = side === 'left' ? dom.leftSidebar : dom.rightSidebar;
+      el.classList.toggle('open', open);
+    }
+
+    function updateMusicProgress() {
+      const duration = dom.musicAudio.duration || 0;
+      const pct = duration > 0 ? Math.max(0, Math.min(1, dom.musicAudio.currentTime / duration)) : 0;
+      dom.musicProgressFill.style.width = `${Math.round(pct * 100)}%`;
+      dom.musicStateLabel.textContent = state.music.url ? (state.music.playing ? 'playing' : 'paused') : '';
+      if (state.music.url) {
+        dom.musicText.textContent = state.music.playing ? 'Playing' : 'Loaded';
+      }
+    }
+
+    function initEventHandlers() {
       dom.loginButton.addEventListener('click', login);
-      dom.loginUsername.addEventListener('keydown', (e) => { if (e.key === 'Enter') login(); });
       dom.loginPassword.addEventListener('keydown', (e) => { if (e.key === 'Enter') login(); });
-
-      dom.setupSaveButton.addEventListener('click', submitSetup);
-      dom.openAiButton.addEventListener('click', openAiModal);
-      dom.openAiButton2.addEventListener('click', openAiModal);
-      dom.closeAiModal.addEventListener('click', () => closeOverlay(dom.aiModalOverlay));
-      dom.saveAiButton.addEventListener('click', submitAiConfig);
-
-      dom.openMediaButton.addEventListener('click', openMediaModal);
-      dom.openUploadBtn.addEventListener('click', openMediaModal);
-      dom.uploadProfileQuickBtn.addEventListener('click', openMediaModal);
-      dom.closeMediaModal.addEventListener('click', () => closeOverlay(dom.mediaModalOverlay));
-      dom.closeMediaButton.addEventListener('click', () => closeOverlay(dom.mediaModalOverlay));
-      dom.openProfilePickerBtn.addEventListener('click', () => dom.profileFileInput.click());
-      dom.sendProfileUploadBtn.addEventListener('click', async () => {
-        dom.mediaModalError.textContent = '';
-        try { await uploadProfile(); } catch (err) { dom.mediaModalError.textContent = err.message || String(err); }
+      dom.loginUsername.addEventListener('keydown', (e) => { if (e.key === 'Enter') login(); });
+      dom.rememberPassword.addEventListener('change', () => {
+        state.rememberPassword = dom.rememberPassword.checked;
+        saveLocalCredentials();
       });
-      dom.sendBackgroundUploadBtn.addEventListener('click', async () => {
-        dom.mediaModalError.textContent = '';
-        try { await uploadBackground(); } catch (err) { dom.mediaModalError.textContent = err.message || String(err); }
+
+      dom.sendMessageBtn.addEventListener('click', () => sendChat(dom.messageInput.value));
+      dom.messageInput.addEventListener('input', autoSizeComposer);
+      dom.messageInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          sendChat(dom.messageInput.value);
+        }
       });
-      dom.sendMusicUploadBtn.addEventListener('click', async () => {
-        dom.mediaModalError.textContent = '';
-        try { await uploadMusic(); } catch (err) { dom.mediaModalError.textContent = err.message || String(err); }
+
+      dom.commandChip.addEventListener('click', () => {
+        if (dom.messageInput.value.startsWith('/')) return;
+        dom.messageInput.value = '/';
+        autoSizeComposer();
+        dom.messageInput.focus();
       });
 
       dom.quickUploadSessionBtn.addEventListener('click', openSessionUploadModal);
+      dom.openUploadBtn.addEventListener('click', openMediaModal);
+      dom.uploadProfileQuickBtn.addEventListener('click', openMediaModal);
       dom.uploadSessionQuickBtn.addEventListener('click', openSessionUploadModal);
-      dom.closeSessionUploadModal.addEventListener('click', () => closeOverlay(dom.sessionUploadModalOverlay));
-      dom.beginSessionUploadBtn.addEventListener('click', beginSessionUpload);
-
-      dom.closeAiNamePrompt.addEventListener('click', () => { state.pendingUpload = null; closeOverlay(dom.aiNamePromptOverlay); });
-      dom.submitAiNamePromptBtn.addEventListener('click', submitAiNamePrompt);
-
-      dom.openGalleryBtn.addEventListener('click', () => setGalleryOpen(!dom.galleryDrawer.classList.contains('open')));
-      dom.closeGalleryBtn.addEventListener('click', () => setGalleryOpen(false));
-
-      dom.openLeftSidebar.addEventListener('click', () => toggleSidebar('left'));
-      dom.leftCloseBtn.addEventListener('click', () => toggleSidebar('left'));
-      dom.openRightSidebar.addEventListener('click', () => toggleSidebar('right'));
-      dom.rightCloseBtn.addEventListener('click', () => toggleSidebar('right'));
-
-      dom.logoutButton.addEventListener('click', () => {
-        try { state.ws?.close(); } catch {}
-        localStorage.removeItem('dr_password');
-        location.reload();
-      });
-
-      dom.commandChip.addEventListener('click', () => insertSlash('/'));
-      dom.commandChips.forEach(btn => btn.addEventListener('click', () => insertSlash(btn.dataset.command || '/')));
+      dom.openMediaButton.addEventListener('click', openMediaModal);
+      dom.openAiButton.addEventListener('click', openAiModal);
+      dom.openAiButton2.addEventListener('click', openAiModal);
+      dom.openGalleryBtn.addEventListener('click', () => toggleGallery(true));
+      dom.closeGalleryBtn.addEventListener('click', () => toggleGallery(false));
       dom.openCommandsBtn.addEventListener('click', () => openOverlay(dom.commandHelpOverlay));
       dom.closeCommandHelp.addEventListener('click', () => closeOverlay(dom.commandHelpOverlay));
       dom.closeCommandHelp2.addEventListener('click', () => closeOverlay(dom.commandHelpOverlay));
 
-      dom.sendMessageBtn.addEventListener('click', sendCurrentMessage);
-      dom.messageInput.addEventListener('input', autoResizeTextarea);
-      dom.messageInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-          e.preventDefault();
-          sendCurrentMessage();
+      dom.openLeftSidebar.addEventListener('click', () => toggleSidebar('left', true));
+      dom.leftCloseBtn.addEventListener('click', () => toggleSidebar('left', false));
+      dom.openRightSidebar.addEventListener('click', () => toggleSidebar('right', true));
+      dom.rightCloseBtn.addEventListener('click', () => toggleSidebar('right', false));
+
+      dom.logoutButton.addEventListener('click', logout);
+
+      dom.closeAiModal.addEventListener('click', () => closeOverlay(dom.aiModalOverlay));
+      dom.saveAiButton.addEventListener('click', sendAiConfig);
+      dom.aiModalOverlay.addEventListener('click', (e) => { if (e.target === dom.aiModalOverlay) closeOverlay(dom.aiModalOverlay); });
+
+      dom.closeMediaModal.addEventListener('click', () => closeOverlay(dom.mediaModalOverlay));
+      dom.closeMediaButton.addEventListener('click', () => closeOverlay(dom.mediaModalOverlay));
+      dom.mediaModalOverlay.addEventListener('click', (e) => { if (e.target === dom.mediaModalOverlay) closeOverlay(dom.mediaModalOverlay); });
+      dom.openProfilePickerBtn.addEventListener('click', () => dom.profileFileInput.click());
+      dom.sendProfileUploadBtn.addEventListener('click', () => uploadImage('profile'));
+      dom.sendBackgroundUploadBtn.addEventListener('click', () => uploadImage('background'));
+      dom.sendMusicUploadBtn.addEventListener('click', () => uploadImage('music'));
+
+      dom.closeSessionUploadModal.addEventListener('click', () => closeOverlay(dom.sessionUploadModalOverlay));
+      dom.beginSessionUploadBtn.addEventListener('click', beginSessionUpload);
+      dom.sessionUploadModalOverlay.addEventListener('click', (e) => { if (e.target === dom.sessionUploadModalOverlay) closeOverlay(dom.sessionUploadModalOverlay); });
+
+      dom.closeAiNamePrompt.addEventListener('click', () => {
+        state.awaitingAiName = null;
+        closeOverlay(dom.aiNamePromptOverlay);
+      });
+      dom.submitAiNamePromptBtn.addEventListener('click', submitAiNamePrompt);
+      dom.aiNamePromptOverlay.addEventListener('click', (e) => {
+        if (e.target === dom.aiNamePromptOverlay) {
+          state.awaitingAiName = null;
+          closeOverlay(dom.aiNamePromptOverlay);
         }
       });
 
+      dom.setupSaveButton.addEventListener('click', sendSetupConfig);
+      dom.setupPassword.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendSetupConfig(); });
+
+      dom.commandChips.forEach((btn) => {
+        btn.addEventListener('click', () => sendChat(btn.dataset.command || ''));
+      });
+
       dom.musicPlayBtn.addEventListener('click', () => {
-        if (!state.isAdmin || !state.music.url) return;
-        sendMusicControl(state.music.playing ? 'pause' : 'play', { currentTime: dom.musicAudio.currentTime || 0 });
+        if (!state.music.url) return;
+        const action = dom.musicAudio.paused ? 'play' : 'pause';
+        send({
+          type: 'music_control',
+          action,
+          currentTime: dom.musicAudio.currentTime || 0,
+          loop: state.music.loop,
+        });
       });
+
       dom.musicLoopBtn.addEventListener('click', () => {
-        if (!state.isAdmin || !state.music.url) return;
-        sendMusicControl('loop', { loop: !state.music.loop });
+        if (!state.music.url) return;
+        send({
+          type: 'music_control',
+          action: 'loop',
+          loop: !state.music.loop,
+          currentTime: dom.musicAudio.currentTime || 0,
+        });
       });
+
       dom.musicProgressTrack.addEventListener('click', (e) => {
-        if (!state.isAdmin || !state.music.url || !dom.musicAudio.duration) return;
+        if (!state.music.url) return;
         const rect = dom.musicProgressTrack.getBoundingClientRect();
-        const fraction = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-        sendMusicControl('seek', { currentTime: dom.musicAudio.duration * fraction });
+        const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+        const time = (dom.musicAudio.duration || 0) * ratio;
+        send({
+          type: 'music_control',
+          action: 'seek',
+          currentTime: time,
+          loop: state.music.loop,
+        });
       });
-      dom.musicAudio.addEventListener('timeupdate', () => {
-        if (dom.musicAudio.duration && !Number.isNaN(dom.musicAudio.duration)) {
-          const pct = Math.max(0, Math.min(100, (dom.musicAudio.currentTime / dom.musicAudio.duration) * 100));
-          dom.musicProgressFill.style.width = pct.toFixed(2) + '%';
-        }
-      });
-      dom.musicAudio.addEventListener('play', () => { dom.musicStateLabel.textContent = 'playing'; dom.musicPlayBtn.textContent = '⏸'; });
-      dom.musicAudio.addEventListener('pause', () => { dom.musicStateLabel.textContent = 'paused'; dom.musicPlayBtn.textContent = '▶'; });
-      dom.musicAudio.addEventListener('ended', () => {
-        if (!state.music.loop) dom.musicPlayBtn.textContent = '▶';
-      });
+
+      dom.musicAudio.addEventListener('timeupdate', updateMusicProgress);
+      dom.musicAudio.addEventListener('play', updateMusicProgress);
+      dom.musicAudio.addEventListener('pause', updateMusicProgress);
+      dom.musicAudio.addEventListener('loadedmetadata', updateMusicProgress);
+      dom.musicAudio.addEventListener('ended', () => updateMusicProgress());
 
       window.addEventListener('resize', () => {
         if (window.innerWidth > 960) {
@@ -2168,33 +2363,42 @@
         }
       });
 
-      document.addEventListener('keydown', (e) => {
+      window.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
-          closeAllModals();
-          setGalleryOpen(false);
-          if (window.innerWidth <= 960) {
-            dom.leftSidebar.classList.remove('open');
-            dom.rightSidebar.classList.remove('open');
-          }
+          closeOverlay(dom.aiModalOverlay);
+          closeOverlay(dom.mediaModalOverlay);
+          closeOverlay(dom.sessionUploadModalOverlay);
+          closeOverlay(dom.aiNamePromptOverlay);
+          closeOverlay(dom.commandHelpOverlay);
+          toggleGallery(false);
+          dom.leftSidebar.classList.remove('open');
+          dom.rightSidebar.classList.remove('open');
         }
       });
-
-      // Clicking the shaded overlay closes modal dialogs, but not the gallery drawer.
-      [dom.aiModalOverlay, dom.mediaModalOverlay, dom.sessionUploadModalOverlay, dom.aiNamePromptOverlay, dom.commandHelpOverlay].forEach(overlay => {
-        overlay.addEventListener('click', (e) => {
-          if (e.target === overlay) closeOverlay(overlay);
-        });
-      });
-
-      // Keep gallery count and badges sane on first render.
-      dom.galleryCount.textContent = '0 items';
-      dom.memberCount.textContent = '0 online';
-      dom.onlineCountBadge.textContent = '0';
-      dom.settingsBadge.textContent = '-';
-      autoResizeTextarea();
     }
 
-    boot();
+    function handleFileSelection() {
+      if (!dom.profileFileInput.files[0] && !dom.backgroundFileInput.files[0] && !dom.musicFileInput.files[0]) return;
+      dom.mediaModalError.textContent = '';
+    }
+
+    dom.profileFileInput.addEventListener('change', handleFileSelection);
+    dom.backgroundFileInput.addEventListener('change', handleFileSelection);
+    dom.musicFileInput.addEventListener('change', handleFileSelection);
+
+    function initialize() {
+      loadLocalCredentials();
+      initEventHandlers();
+      connectSocket();
+      updateRoleVisibility();
+      autoSizeComposer();
+      renderUsers();
+      renderGallery();
+      setConnection('Connecting');
+      dom.musicAudio.volume = 1.0;
+    }
+
+    initialize();
   </script>
 </body>
 </html>
