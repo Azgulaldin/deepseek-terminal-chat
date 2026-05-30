@@ -34,14 +34,12 @@ def install_packages():
             missing.append(pkg)
     if missing:
         print(f"Installing missing packages: {', '.join(missing)}")
-        # Use the same Python interpreter that's running this script
         subprocess.check_call([sys.executable, "-m", "pip", "install"] + missing)
 
 install_packages()
 
 import aiohttp
 from aiohttp import web
-import aiohttp.web_runner
 import websockets
 
 # -------------------------------------------------------------------
@@ -73,7 +71,6 @@ class SessionLogger:
     def start(self) -> Path:
         session_dir = SESSION_ROOT
         today = datetime.now().strftime("%Y-%m-%d")
-        # Find next session number for today
         existing_numbers = []
         for p in session_dir.glob(f"{today}_*.txt"):
             stem = p.stem
@@ -127,9 +124,8 @@ def save_user_config(config: dict) -> None:
 class RelayState:
     def __init__(self):
         self.remote_ws: Optional[websockets.WebSocketClientProtocol] = None
-        self.local_clients: Dict[aiohttp.web.WebSocketResponse, str] = {}  # local ws -> username
+        self.local_clients: Dict[aiohttp.web.WebSocketResponse, str] = {}
         self.logger: Optional[SessionLogger] = None
-        self.loop = asyncio.get_event_loop()
         self.receiver_task: Optional[asyncio.Task] = None
         self.pending_upload: Dict[str, Any] = {}
 
@@ -147,19 +143,16 @@ def find_free_port():
 # Remote WebSocket receiver (from Railway to all local browsers)
 # -------------------------------------------------------------------
 async def remote_receiver():
-    """Receive messages from the remote server and broadcast to all local browsers."""
     while True:
         try:
             raw = await state.remote_ws.recv()
         except websockets.ConnectionClosed as e:
             print(f"Remote connection closed: {e}")
-            # Notify local browsers and attempt reconnect
             for ws in list(state.local_clients.keys()):
                 try:
                     await ws.send_json({"type": "system", "message": "Disconnected from server. Reconnecting..."})
                 except:
                     pass
-            # Try to reconnect after a delay
             await asyncio.sleep(5)
             if not await reconnect_remote():
                 break
@@ -173,7 +166,6 @@ async def remote_receiver():
         except json.JSONDecodeError:
             continue
 
-        # Log locally where appropriate
         msg_type = data.get("type")
         if msg_type == "chat":
             sender = data.get("sender", "")
@@ -191,7 +183,7 @@ async def remote_receiver():
         elif msg_type == "new_session":
             if state.logger:
                 state.logger.log_system(data.get("message", ""))
-                state.logger.start()   # start a fresh log file
+                state.logger.start()
 
         # Forward to all local browser clients
         dead = []
@@ -204,11 +196,19 @@ async def remote_receiver():
             state.local_clients.pop(ws, None)
 
 # -------------------------------------------------------------------
-# Send a message to the remote server
+# Send a message to the remote server (safe version)
 # -------------------------------------------------------------------
 async def send_to_remote(message: str) -> None:
-    if state.remote_ws and state.remote_ws.open:
+    """Try to send a message to the remote WebSocket. Fails silently if disconnected."""
+    if state.remote_ws is None:
+        return
+    try:
         await state.remote_ws.send(message)
+    except websockets.ConnectionClosed:
+        print("Remote connection closed while trying to send.")
+        state.remote_ws = None
+    except Exception as e:
+        print(f"Failed to send to remote: {e}")
 
 # -------------------------------------------------------------------
 # Connect to the remote server (called after login)
@@ -220,7 +220,6 @@ async def connect_remote(username: str, password: str) -> bool:
         print(f"Failed to connect to server: {e}")
         return False
 
-    # Send join_request
     join_msg = json.dumps({
         "type": "join_request",
         "username": username,
@@ -228,7 +227,6 @@ async def connect_remote(username: str, password: str) -> bool:
     })
     await ws.send(join_msg)
 
-    # Wait for join_response
     try:
         raw = await ws.recv()
         resp = json.loads(raw)
@@ -237,8 +235,7 @@ async def connect_remote(username: str, password: str) -> bool:
             role = resp.get("role", "user")
             print(f"Connected as {username} (role: {role})")
 
-            # --- NEW: inform browsers of the server base URL for uploads ---
-            # Convert wss:// URL to https:// and strip /chat
+            # Inform browser of the server base URL for uploads
             remote_base_url = SERVER_URL.replace("wss://", "https://").rsplit("/", 1)[0]
             server_info = {
                 "type": "server_info",
@@ -249,8 +246,6 @@ async def connect_remote(username: str, password: str) -> bool:
                     await ws_local.send_json(server_info)
                 except:
                     pass
-            # Also send a system message
-            for ws_local in state.local_clients.values():
                 try:
                     await ws_local.send_json({"type": "system", "message": f"Connected to server as {username}."})
                 except:
@@ -284,7 +279,7 @@ async def reconnect_remote() -> bool:
 async def local_ws_handler(request: aiohttp.web.Request) -> aiohttp.web.WebSocketResponse:
     ws = aiohttp.web.WebSocketResponse()
     await ws.prepare(request)
-    state.local_clients[ws] = ""   # username assigned later
+    state.local_clients[ws] = ""
     try:
         async for msg in ws:
             if msg.type == aiohttp.WSMsgType.TEXT:
@@ -321,18 +316,15 @@ async def handle_local_message(ws: aiohttp.web.WebSocketResponse, raw: str):
             config.pop("password", None)
         save_user_config(config)
 
-        # Start session logger
         persona = config.get("persona", "")
         state.logger = SessionLogger(username, persona)
         state.logger.start()
         await ws.send_json({"type": "login_accepted", "username": username})
 
-        # Connect to remote
         success = await connect_remote(username, password)
         if not success:
             return
 
-        # Start receiver if not already running
         if not state.receiver_task or state.receiver_task.done():
             state.receiver_task = asyncio.create_task(remote_receiver())
 
@@ -340,11 +332,9 @@ async def handle_local_message(ws: aiohttp.web.WebSocketResponse, raw: str):
         message = data.get("message", "")
         if not message:
             return
-        # Log locally
         if state.logger:
             username = state.local_clients.get(ws, "You")
             state.logger.log_chat(username, message)
-        # Send as plain text (the server expects non-JSON for chat)
         await send_to_remote(message)
 
     elif msg_type == "music_control":
@@ -364,7 +354,6 @@ async def handle_local_message(ws: aiohttp.web.WebSocketResponse, raw: str):
             await complete_upload_session(upload_id, ai_name)
 
     else:
-        # Forward any other JSON message directly to remote
         await send_to_remote(json.dumps(data))
 
 # -------------------------------------------------------------------
