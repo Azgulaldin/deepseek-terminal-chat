@@ -911,10 +911,6 @@
                 <label for="loginPersona">Persona</label>
                 <input id="loginPersona" type="text" autocomplete="off" placeholder="Describe your user persona" />
               </div>
-              <div class="field">
-                <label for="loginInventory">Inventory</label>
-                <textarea id="loginInventory" autocomplete="off" placeholder="Optional inventory list. Leave blank to let the AI generate one."></textarea>
-              </div>
               <div class="toggle-row">
                 <label class="toggle"><input id="rememberPassword" type="checkbox" /> Remember password locally</label>
                 <span id="loginModeHint">Local relay will connect to the server</span>
@@ -1169,10 +1165,6 @@
             <span>Persona</span>
             <strong id="personaText">-</strong>
           </div>
-          <div class="stat-card">
-            <span>Inventory</span>
-            <strong id="inventoryText">-</strong>
-          </div>
         </div>
       </div>
     </aside>
@@ -1287,17 +1279,17 @@
       <div class="modal-body">
         <div class="session-browser">
           <div class="field">
-            <label for="sessionFileInput">Choose one or more saved log files</label>
-            <input id="sessionFileInput" type="file" accept=".txt,.log,text/plain" multiple class="hidden" />
+            <label for="sessionFileInput">Choose a saved log file</label>
+            <input id="sessionFileInput" type="file" accept=".txt,.log,text/plain" class="hidden" />
             <div class="session-browser-toolbar">
               <button id="browseSessionFileBtn" class="secondary-btn" type="button">Browse files</button>
-              <span class="small-note">You can merge several logs; they will be loaded in chronological order.</span>
+              <span class="small-note">Pick the log from the sessions folder on this machine.</span>
             </div>
-            <div class="tiny">The browser reads each file locally, keeps every sender name, and sends the combined session back through the relay.</div>
+            <div class="tiny">The browser reads the file locally, keeps every sender name, and sends the whole session back through the relay.</div>
           </div>
 
           <div class="field">
-            <label for="sessionAiNameInput">AI sender name in these logs</label>
+            <label for="sessionAiNameInput">AI sender name in this log</label>
             <input id="sessionAiNameInput" type="text" placeholder="DEEPSEEK" />
             <div class="tiny">Messages from this sender are loaded as assistant messages. Everyone else is loaded as user messages.</div>
           </div>
@@ -1428,7 +1420,6 @@
       loginUsername: $('loginUsername'),
       loginPassword: $('loginPassword'),
       loginPersona: $('loginPersona'),
-      loginInventory: $('loginInventory'),
       rememberPassword: $('rememberPassword'),
       loginButton: $('loginButton'),
       loginError: $('loginError'),
@@ -1468,7 +1459,6 @@
       backgroundText: $('backgroundText'),
       musicText: $('musicText'),
       personaText: $('personaText'),
-      inventoryText: $('inventoryText'),
       controlSubtitle: $('controlSubtitle'),
 
       openAiButton: $('openAiButton'),
@@ -1554,7 +1544,6 @@
       username: '',
       password: '',
       persona: '',
-      inventory: '',
       rememberPassword: false,
       role: 'user',
       isAdmin: false,
@@ -1620,7 +1609,6 @@
     function saveLocalCredentials() {
       localStorage.setItem('dr_username', dom.loginUsername.value.trim());
       localStorage.setItem('dr_persona', dom.loginPersona.value.trim());
-      localStorage.setItem('dr_inventory', dom.loginInventory.value.trim());
       if (dom.rememberPassword.checked) {
         localStorage.setItem('dr_password', dom.loginPassword.value);
         localStorage.setItem('dr_remember', '1');
@@ -1633,13 +1621,11 @@
     function loadLocalCredentials() {
       dom.loginUsername.value = localStorage.getItem('dr_username') || '';
       dom.loginPersona.value = localStorage.getItem('dr_persona') || '';
-      dom.loginInventory.value = localStorage.getItem('dr_inventory') || '';
       dom.loginPassword.value = localStorage.getItem('dr_password') || '';
       dom.rememberPassword.checked = localStorage.getItem('dr_remember') === '1';
       dom.loginModeHint.textContent = 'Local relay will connect to the server';
       state.username = dom.loginUsername.value.trim();
       state.persona = dom.loginPersona.value.trim();
-      state.inventory = dom.loginInventory.value.trim();
       state.password = dom.loginPassword.value;
       state.rememberPassword = dom.rememberPassword.checked;
     }
@@ -1884,7 +1870,6 @@
       };
       dom.aiNamePill.textContent = `AI: ${state.aiConfig.name}`;
       dom.personaText.textContent = state.persona || '-';
-      dom.inventoryText.textContent = state.inventory || '-';
       dom.settingsBadge.textContent = state.aiConfig.show_reasoning ? 'reasoning on' : 'reasoning off';
       if (state.username && state.aiConfig.admin_username === state.username) state.isAdmin = true;
       dom.aiNameInput.value = state.aiConfig.name || '';
@@ -1905,7 +1890,6 @@
       dom.backgroundText.textContent = state.backgroundUrl ? 'Active' : 'None';
       dom.musicText.textContent = state.music.url ? 'Loaded' : 'None';
       dom.personaText.textContent = state.persona || '-';
-      dom.inventoryText.textContent = state.inventory || '-';
 
       // Admin-only controls are still visible in the modal, but disabled for non-admin users.
       dom.backgroundFileInput.disabled = !admin;
@@ -1934,15 +1918,10 @@
       if (data.ai_config) applyAiConfig(data.ai_config);
       if (data.admin_username && data.admin_username === state.username) state.isAdmin = true;
       if (data.persona) state.persona = data.persona;
-      if (typeof data.inventory === 'string') state.inventory = data.inventory;
       if (data.online_user_personas && state.username && data.online_user_personas[state.username]) {
         state.persona = data.online_user_personas[state.username];
       }
-      if (data.online_user_inventories && state.username && data.online_user_inventories[state.username]) {
-        state.inventory = data.online_user_inventories[state.username];
-      }
       dom.personaText.textContent = state.persona || '-';
-      dom.inventoryText.textContent = state.inventory || '-';
       if (typeof data.background_url !== 'undefined') setBackground(data.background_url || '');
       if (data.music_state) syncMusic(data.music_state);
       if (data.profile_pics) {
@@ -2023,9 +2002,9 @@
     }
 
     function clearSessionBrowserSelection() {
-      state.selectedSessionFile = [];
+      state.selectedSessionFile = null;
       if (dom.sessionFileInput) dom.sessionFileInput.value = '';
-      updateSessionFileLabel([]);
+      if (dom.sessionFileName) dom.sessionFileName.textContent = 'No file selected.';
       if (dom.sessionAiNameInput) dom.sessionAiNameInput.value = state.aiConfig.name || 'DEEPSEEK';
     }
 
@@ -2053,95 +2032,23 @@
       openOverlay(dom.aiNamePromptOverlay);
     }
 
-    function updateSessionFileLabel(files) {
+    function updateSessionFileLabel(file) {
       if (!dom.sessionFileName) return;
-      const list = Array.from(files || []);
-      if (!list.length) {
-        dom.sessionFileName.textContent = 'No file selected.';
-        return;
-      }
-      if (list.length === 1) {
-        const file = list[0];
-        dom.sessionFileName.textContent = `${file.name}${file.webkitRelativePath ? ` · ${file.webkitRelativePath}` : ''}`;
-        return;
-      }
-      dom.sessionFileName.textContent = `${list.length} files selected: ${list.map((file) => file.name).join(', ')}`;
-    }
-
-    function extractSessionStartTimestamp(text) {
-      const match = String(text || '').match(/^Session started:\s*(.+)$/mi);
-      if (!match) return Number.POSITIVE_INFINITY;
-      const parsed = Date.parse(match[1].trim().replace(' ', 'T'));
-      return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
+      dom.sessionFileName.textContent = file ? `${file.name}${file.webkitRelativePath ? ` · ${file.webkitRelativePath}` : ''}` : 'No file selected.';
     }
 
     function parseSessionLogText(text, aiName, username) {
       const history = [];
-      const lines = String(text || '').split(/?
-/);
+      const lines = String(text || '').split(/\r?\n/);
       const aiSender = String(aiName || '').trim().toLowerCase();
       const userName = String(username || '').trim().toLowerCase();
-      const headerPrefixes = ['Session started:', 'Username:', 'Persona:', 'Inventory:'];
-      let current = null;
       let skippingReasoning = false;
 
-      function finalizeCurrent() {
-        if (!current) return;
-        const content = current.lines.join('
-').replace(/\s+$/, '');
-        if (!content || current.kind !== 'message') {
-          current = null;
-          return;
-        }
-        const sender = current.sender.trim();
-        if (!sender) {
-          current = null;
-          return;
-        }
-        const senderLower = sender.toLowerCase();
-        const role = senderLower === aiSender && aiSender ? 'assistant' : 'user';
-        history.push({ role, sender, content });
-        current = null;
-      }
-
       for (const rawLine of lines) {
-        const line = rawLine.replace(/$/, '');
-
-        if (/^\[\d{2}:\d{2}:\d{2}\]\s*/.test(line)) {
-          finalizeCurrent();
-          const match = line.match(/^\[(\d{2}:\d{2}:\d{2})\]\s*(.*)$/);
-          const content = match ? match[2] : '';
-          if (!content) {
-            current = { kind: 'system', sender: '', lines: [] };
-            continue;
-          }
-          if (/^\[.*\sREASONING\]$/i.test(content.trim())) {
-            current = { kind: 'reasoning', sender: '', lines: [] };
-            skippingReasoning = true;
-            continue;
-          }
-          if (/^SYSTEM:/i.test(content.trim())) {
-            current = { kind: 'system', sender: '', lines: [] };
-            continue;
-          }
-
-          const colonIndex = content.indexOf(':');
-          if (colonIndex === -1) {
-            current = { kind: 'system', sender: '', lines: [] };
-            continue;
-          }
-          const sender = content.slice(0, colonIndex).trim();
-          const message = content.slice(colonIndex + 1).replace(/^\s+/, '');
-          current = { kind: 'message', sender, lines: [message] };
-          skippingReasoning = false;
+        const line = rawLine.trimEnd();
+        if (!line) {
           continue;
         }
-
-        if (/^Session started:/i.test(line) || headerPrefixes.some((prefix) => line.startsWith(prefix))) {
-          continue;
-        }
-
-        if (!current) continue;
 
         if (skippingReasoning) {
           if (/^\[\d{2}:\d{2}:\d{2}\]\s*/.test(line)) {
@@ -2151,46 +2058,72 @@
           }
         }
 
-        current.lines.push(line);
+        if (/^Session started:/i.test(line) || /^Username:/i.test(line) || /^Persona:/i.test(line)) {
+          continue;
+        }
+
+        const match = line.match(/^\[(.*?)\]\s*(.*)$/);
+        if (!match) {
+          continue;
+        }
+
+        const content = match[2];
+        if (!content) {
+          continue;
+        }
+
+        if (/^\[.*\sREASONING\]$/i.test(content)) {
+          skippingReasoning = true;
+          continue;
+        }
+
+        if (/^SYSTEM:/i.test(content)) {
+          continue;
+        }
+
+        const parts = content.match(/^([^:]+):\s([\s\S]*)$/);
+        if (!parts) {
+          continue;
+        }
+
+        const sender = parts[1].trim();
+        const message = parts[2];
+        if (!sender || !message) {
+          continue;
+        }
+
+        const senderLower = sender.toLowerCase();
+        const role = senderLower === aiSender && aiSender ? 'assistant' : 'user';
+        history.push({
+          role,
+          sender,
+          content: message,
+        });
       }
 
-      finalizeCurrent();
       return history;
     }
 
     async function loadSelectedSessionFile() {
-      const files = Array.from(dom.sessionFileInput.files || []);
-      if (!files.length) {
-        dom.sessionUploadError.textContent = 'Choose one or more log files first.';
+      const file = dom.sessionFileInput.files && dom.sessionFileInput.files[0];
+      if (!file) {
+        dom.sessionUploadError.textContent = 'Choose a log file first.';
         return;
       }
 
       dom.sessionUploadError.textContent = '';
       const aiName = dom.sessionAiNameInput.value.trim() || state.aiConfig.name || 'DEEPSEEK';
-
-      const parsed = [];
+      let text;
       try {
-        for (const file of files) {
-          const text = await file.text();
-          parsed.push({
-            file,
-            start: extractSessionStartTimestamp(text),
-            history: parseSessionLogText(text, aiName, state.username),
-          });
-        }
+        text = await file.text();
       } catch (err) {
         dom.sessionUploadError.textContent = err.message || 'Could not read the file.';
         return;
       }
 
-      parsed.sort((a, b) => {
-        if (a.start !== b.start) return a.start - b.start;
-        return a.file.name.localeCompare(b.file.name);
-      });
-
-      const history = parsed.flatMap((item) => item.history);
+      const history = parseSessionLogText(text, aiName, state.username);
       if (!history.length) {
-        dom.sessionUploadError.textContent = 'No chat entries found in those log files.';
+        dom.sessionUploadError.textContent = 'No chat entries found in that log.';
         return;
       }
 
@@ -2202,12 +2135,11 @@
         return;
       }
 
-      appendSystemMessage(`Loaded ${files.length} file${files.length === 1 ? '' : 's'} with ${history.length} messages.`);
+      appendSystemMessage(`Loaded ${file.name} with ${history.length} messages.`);
       closeOverlay(dom.sessionUploadModalOverlay);
     }
 
     function sendChat(value) {
-
       const text = String(value || '').trim();
       if (!text) return;
 
@@ -2230,7 +2162,6 @@
       const username = dom.loginUsername.value.trim();
       const password = dom.loginPassword.value;
       const persona = dom.loginPersona.value.trim();
-      const inventory = dom.loginInventory.value.trim();
       const remember_password = dom.rememberPassword.checked;
       dom.loginError.textContent = '';
 
@@ -2241,7 +2172,6 @@
 
       state.username = username;
       state.persona = persona;
-      state.inventory = inventory;
       state.password = password;
       state.rememberPassword = remember_password;
       saveLocalCredentials();
@@ -2250,7 +2180,7 @@
       const timer = setInterval(() => {
         if (state.ws && state.ws.readyState === WebSocket.OPEN) {
           clearInterval(timer);
-          send({ type: 'login', username, persona, inventory, password, remember_password });
+          send({ type: 'login', username, persona, password, remember_password });
           setConnection('Authorizing');
         }
       }, 50);
@@ -2262,7 +2192,6 @@
       state.username = '';
       state.password = '';
       state.persona = '';
-      state.inventory = '';
       state.rememberPassword = false;
       state.role = 'user';
       state.isAdmin = false;
@@ -2293,7 +2222,6 @@
       dom.loginPassword.value = localStorage.getItem('dr_remember') === '1' ? (localStorage.getItem('dr_password') || '') : '';
       dom.loginUsername.value = localStorage.getItem('dr_username') || '';
       dom.loginPersona.value = localStorage.getItem('dr_persona') || '';
-      dom.loginInventory.value = localStorage.getItem('dr_inventory') || '';
       dom.loginError.textContent = '';
       clearMessages();
       setBackground('');
@@ -2316,11 +2244,9 @@
           state.role = data.role || 'user';
           state.isAdmin = state.role === 'admin';
           if (data.persona) state.persona = data.persona;
-          if (typeof data.inventory === 'string') state.inventory = data.inventory;
           dom.roleText.textContent = state.role;
           if (data.persona) state.persona = data.persona;
           dom.personaText.textContent = state.persona || '-';
-          dom.inventoryText.textContent = state.inventory || '-';
           dom.roomSubtitle.textContent = `Connected as ${data.username || state.username}`;
           dom.roomTitle.textContent = `DeepSeek Roleplay · ${data.username || state.username}`;
           showApp();
@@ -2331,10 +2257,8 @@
           state.role = data.role || state.role;
           state.isAdmin = state.role === 'admin';
           if (data.persona) state.persona = data.persona;
-          if (typeof data.inventory === 'string') state.inventory = data.inventory;
           dom.roleText.textContent = state.role;
           dom.personaText.textContent = state.persona || '-';
-          dom.inventoryText.textContent = state.inventory || '-';
           dom.roomSubtitle.textContent = `Connected as ${data.username || state.username}`;
           dom.roomTitle.textContent = `DeepSeek Roleplay · ${data.username || state.username}`;
           showApp();
@@ -2694,9 +2618,9 @@
       dom.quickUploadSessionBtn.addEventListener('click', openSessionUploadModal);
       dom.browseSessionFileBtn.addEventListener('click', () => dom.sessionFileInput.click());
       dom.sessionFileInput.addEventListener('change', () => {
-        const files = dom.sessionFileInput.files || [];
-        state.selectedSessionFile = Array.from(files);
-        updateSessionFileLabel(files);
+        const file = dom.sessionFileInput.files && dom.sessionFileInput.files[0];
+        state.selectedSessionFile = file || null;
+        updateSessionFileLabel(file || null);
         dom.sessionUploadError.textContent = '';
       });
       dom.loadSelectedSessionBtn.addEventListener('click', loadSelectedSessionFile);

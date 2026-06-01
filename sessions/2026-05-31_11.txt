@@ -1,0 +1,18 @@
+Session started: 2026-05-31 01:41:49
+Username: Ad kun
+Persona: an 18 year old guy. real name Adonantes, but he likes to go with Ad kun or just Ad for short
+
+[01:41:51] SYSTEM: Connected as admin.
+[01:43:02] SYSTEM: AI setup failed: Expected ai_config_update during setup
+[01:43:08] SYSTEM: Connected as admin.
+[01:43:53] SYSTEM: AI setup failed: Expected ai_config_update during setup
+[01:43:57] SYSTEM: Connected as admin.
+[01:44:04] Ad kun: Hi
+[01:44:04] SYSTEM: AI setup failed: Expected JSON setup message
+[01:44:09] SYSTEM: Connected as admin.
+[01:45:59] Ad kun: hi
+[01:45:59] SYSTEM: AI setup failed: Expected JSON setup message
+[01:46:05] SYSTEM: Connected as admin.
+[01:47:12] Eather: hi
+[01:47:14] DEEPSEEK: Hi Eather! How's it going? Ready for anything interesting today?
+[01:47:59] SYSTEM: Uploaded session loaded.
