@@ -888,7 +888,7 @@
               <li>Username/password join</li>
               <li>Auto-reconnect through the local relay</li>
               <li>Admin setup on first launch</li>
-              <li>Music, background, gallery, and profile uploads</li>
+              <li>Music, background, gallery, profile uploads, and starter inventory</li>
               <li>Reasoning display when the server exposes it</li>
             </ul>
             <div class="divider"></div>
@@ -913,7 +913,7 @@
               </div>
               <div class="field">
                 <label for="loginInventory">Inventory</label>
-                <textarea id="loginInventory" autocomplete="off" placeholder="Optional inventory list. Leave blank to let the AI generate one."></textarea>
+                <textarea id="loginInventory" autocomplete="off" placeholder="Starter items, one per line or comma-separated. Leave blank to let AI generate one."></textarea>
               </div>
               <div class="toggle-row">
                 <label class="toggle"><input id="rememberPassword" type="checkbox" /> Remember password locally</label>
@@ -1288,12 +1288,12 @@
         <div class="session-browser">
           <div class="field">
             <label for="sessionFileInput">Choose one or more saved log files</label>
-            <input id="sessionFileInput" type="file" accept=".txt,.log,text/plain" multiple class="hidden" />
+            <input id="sessionFileInput" type="file" accept=".txt,.log,text/plain" class="hidden" multiple />
             <div class="session-browser-toolbar">
               <button id="browseSessionFileBtn" class="secondary-btn" type="button">Browse files</button>
-              <span class="small-note">You can merge several logs; they will be loaded in chronological order.</span>
+              <span class="small-note">Pick one or more logs from the sessions folder on this machine.</span>
             </div>
-            <div class="tiny">The browser reads each file locally, keeps every sender name, and sends the combined session back through the relay.</div>
+            <div class="tiny">The browser reads the files locally, keeps every sender name, and sends the merged session back through the relay in order.</div>
           </div>
 
           <div class="field">
@@ -1583,7 +1583,7 @@
       reconnectTimer: null,
       suppressScroll: false,
       awaitingAiName: null,
-      selectedSessionFile: null,
+      selectedSessionFiles: [],
       chatMessageSeq: 0,
     };
 
@@ -1633,6 +1633,7 @@
     function loadLocalCredentials() {
       dom.loginUsername.value = localStorage.getItem('dr_username') || '';
       dom.loginPersona.value = localStorage.getItem('dr_persona') || '';
+      dom.loginInventory.value = localStorage.getItem('dr_inventory') || '';
       dom.loginInventory.value = localStorage.getItem('dr_inventory') || '';
       dom.loginPassword.value = localStorage.getItem('dr_password') || '';
       dom.rememberPassword.checked = localStorage.getItem('dr_remember') === '1';
@@ -1938,7 +1939,7 @@
       if (data.online_user_personas && state.username && data.online_user_personas[state.username]) {
         state.persona = data.online_user_personas[state.username];
       }
-      if (data.online_user_inventories && state.username && data.online_user_inventories[state.username]) {
+      if (data.online_user_inventories && state.username && typeof data.online_user_inventories[state.username] === 'string') {
         state.inventory = data.online_user_inventories[state.username];
       }
       dom.personaText.textContent = state.persona || '-';
@@ -2023,9 +2024,9 @@
     }
 
     function clearSessionBrowserSelection() {
-      state.selectedSessionFile = [];
+      state.selectedSessionFiles = [];
       if (dom.sessionFileInput) dom.sessionFileInput.value = '';
-      updateSessionFileLabel([]);
+      if (dom.sessionFileName) dom.sessionFileName.textContent = 'No file selected.';
       if (dom.sessionAiNameInput) dom.sessionAiNameInput.value = state.aiConfig.name || 'DEEPSEEK';
     }
 
@@ -2055,7 +2056,7 @@
 
     function updateSessionFileLabel(files) {
       if (!dom.sessionFileName) return;
-      const list = Array.from(files || []);
+      const list = Array.from(files || []).filter(Boolean);
       if (!list.length) {
         dom.sessionFileName.textContent = 'No file selected.';
         return;
@@ -2065,101 +2066,79 @@
         dom.sessionFileName.textContent = `${file.name}${file.webkitRelativePath ? ` · ${file.webkitRelativePath}` : ''}`;
         return;
       }
-      dom.sessionFileName.textContent = `${list.length} files selected: ${list.map((file) => file.name).join(', ')}`;
-    }
-
-    function extractSessionStartTimestamp(text) {
-      const match = String(text || '').match(/^Session started:\s*(.+)$/mi);
-      if (!match) return Number.POSITIVE_INFINITY;
-      const parsed = Date.parse(match[1].trim().replace(' ', 'T'));
-      return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
+      const names = list.map((file) => file.name).join(', ');
+      dom.sessionFileName.textContent = `${list.length} files selected: ${names}`;
     }
 
     function parseSessionLogText(text, aiName, username) {
       const history = [];
-      const lines = String(text || '').split(/?
-/);
       const aiSender = String(aiName || '').trim().toLowerCase();
       const userName = String(username || '').trim().toLowerCase();
-      const headerPrefixes = ['Session started:', 'Username:', 'Persona:', 'Inventory:'];
+      const lines = String(text || '').replace(/\r/g, '').split('\n');
       let current = null;
-      let skippingReasoning = false;
 
-      function finalizeCurrent() {
+      const flush = () => {
         if (!current) return;
-        const content = current.lines.join('
-').replace(/\s+$/, '');
-        if (!content || current.kind !== 'message') {
+        const content = current.lines.join('\n').replace(/\s+$/, '');
+        if (!content) {
           current = null;
           return;
         }
-        const sender = current.sender.trim();
-        if (!sender) {
+        if (/^SYSTEM:/i.test(content)) {
           current = null;
           return;
         }
+        if (/^\[.*\sREASONING\]$/i.test(content.trim())) {
+          current = null;
+          return;
+        }
+
+        const parts = content.match(/^([^:]+):\s([\s\S]*)$/);
+        if (!parts) {
+          current = null;
+          return;
+        }
+
+        const sender = parts[1].trim();
+        const message = parts[2];
+        if (!sender || !message) {
+          current = null;
+          return;
+        }
+
         const senderLower = sender.toLowerCase();
         const role = senderLower === aiSender && aiSender ? 'assistant' : 'user';
-        history.push({ role, sender, content });
+        history.push({ role, sender, content: message });
         current = null;
-      }
+      };
 
       for (const rawLine of lines) {
-        const line = rawLine.replace(/$/, '');
-
-        if (/^\[\d{2}:\d{2}:\d{2}\]\s*/.test(line)) {
-          finalizeCurrent();
-          const match = line.match(/^\[(\d{2}:\d{2}:\d{2})\]\s*(.*)$/);
-          const content = match ? match[2] : '';
-          if (!content) {
-            current = { kind: 'system', sender: '', lines: [] };
-            continue;
-          }
-          if (/^\[.*\sREASONING\]$/i.test(content.trim())) {
-            current = { kind: 'reasoning', sender: '', lines: [] };
-            skippingReasoning = true;
-            continue;
-          }
-          if (/^SYSTEM:/i.test(content.trim())) {
-            current = { kind: 'system', sender: '', lines: [] };
-            continue;
-          }
-
-          const colonIndex = content.indexOf(':');
-          if (colonIndex === -1) {
-            current = { kind: 'system', sender: '', lines: [] };
-            continue;
-          }
-          const sender = content.slice(0, colonIndex).trim();
-          const message = content.slice(colonIndex + 1).replace(/^\s+/, '');
-          current = { kind: 'message', sender, lines: [message] };
-          skippingReasoning = false;
+        const line = rawLine;
+        if (/^Session started:/i.test(line) || /^Username:/i.test(line) || /^Persona:/i.test(line)) {
           continue;
         }
 
-        if (/^Session started:/i.test(line) || headerPrefixes.some((prefix) => line.startsWith(prefix))) {
+        const stampMatch = line.match(/^\[(\d{2}:\d{2}:\d{2})\]\s*(.*)$/);
+        if (stampMatch) {
+          flush();
+          current = {
+            stamp: stampMatch[1],
+            lines: [stampMatch[2]],
+          };
           continue;
         }
 
-        if (!current) continue;
-
-        if (skippingReasoning) {
-          if (/^\[\d{2}:\d{2}:\d{2}\]\s*/.test(line)) {
-            skippingReasoning = false;
-          } else {
-            continue;
-          }
+        if (current) {
+          current.lines.push(line);
         }
-
-        current.lines.push(line);
       }
 
-      finalizeCurrent();
+      flush();
       return history;
     }
 
-    async function loadSelectedSessionFile() {
-      const files = Array.from(dom.sessionFileInput.files || []);
+    async function loadSelectedSessionFiles() {
+      const files = Array.from((dom.sessionFileInput.files || [])).filter(Boolean);
       if (!files.length) {
         dom.sessionUploadError.textContent = 'Choose one or more log files first.';
         return;
@@ -2168,46 +2147,51 @@
       dom.sessionUploadError.textContent = '';
       const aiName = dom.sessionAiNameInput.value.trim() || state.aiConfig.name || 'DEEPSEEK';
 
-      const parsed = [];
-      try {
-        for (const file of files) {
-          const text = await file.text();
-          parsed.push({
-            file,
-            start: extractSessionStartTimestamp(text),
-            history: parseSessionLogText(text, aiName, state.username),
-          });
-        }
-      } catch (err) {
-        dom.sessionUploadError.textContent = err.message || 'Could not read the file.';
-        return;
-      }
-
-      parsed.sort((a, b) => {
-        if (a.start !== b.start) return a.start - b.start;
-        return a.file.name.localeCompare(b.file.name);
+      const ordered = [...files].sort((a, b) => {
+        const delta = (a.lastModified || 0) - (b.lastModified || 0);
+        if (delta !== 0) return delta;
+        return String(a.name || '').localeCompare(String(b.name || ''));
       });
 
-      const history = parsed.flatMap((item) => item.history);
-      if (!history.length) {
-        dom.sessionUploadError.textContent = 'No chat entries found in those log files.';
+      const combinedHistory = [];
+      const loadedNames = [];
+
+      for (const file of ordered) {
+        let text;
+        try {
+          text = await file.text();
+        } catch (err) {
+          dom.sessionUploadError.textContent = err.message || `Could not read ${file.name}.`;
+          return;
+        }
+
+        const history = parseSessionLogText(text, aiName, state.username);
+        if (!history.length) {
+          continue;
+        }
+
+        combinedHistory.push(...history);
+        loadedNames.push(file.name);
+      }
+
+      if (!combinedHistory.length) {
+        dom.sessionUploadError.textContent = 'No chat entries found in the selected log file(s).';
         return;
       }
 
       if (!send({
         type: 'upload_session',
-        history,
+        history: combinedHistory,
       })) {
         dom.sessionUploadError.textContent = 'Not connected to the local relay yet.';
         return;
       }
 
-      appendSystemMessage(`Loaded ${files.length} file${files.length === 1 ? '' : 's'} with ${history.length} messages.`);
+      appendSystemMessage(`Loaded ${loadedNames.length} file(s) with ${combinedHistory.length} messages.`);
       closeOverlay(dom.sessionUploadModalOverlay);
     }
 
     function sendChat(value) {
-
       const text = String(value || '').trim();
       if (!text) return;
 
@@ -2284,7 +2268,7 @@
         admin_username: null,
       };
       state.music = { url: null, playing: false, currentTime: 0, loop: false, server_time: 0 };
-      state.selectedSessionFile = null;
+      state.selectedSessionFiles = [];
       clearTimeout(state.reconnectTimer);
       if (state.ws) {
         try { state.ws.close(); } catch {}
@@ -2318,7 +2302,6 @@
           if (data.persona) state.persona = data.persona;
           if (typeof data.inventory === 'string') state.inventory = data.inventory;
           dom.roleText.textContent = state.role;
-          if (data.persona) state.persona = data.persona;
           dom.personaText.textContent = state.persona || '-';
           dom.inventoryText.textContent = state.inventory || '-';
           dom.roomSubtitle.textContent = `Connected as ${data.username || state.username}`;
@@ -2610,7 +2593,7 @@
     }
 
     function beginSessionUpload() {
-      loadSelectedSessionFile();
+      loadSelectedSessionFiles();
     }
 
     function submitAiNamePrompt() {
@@ -2659,6 +2642,7 @@
       dom.loginPassword.addEventListener('keydown', (e) => { if (e.key === 'Enter') login(); });
       dom.loginUsername.addEventListener('keydown', (e) => { if (e.key === 'Enter') login(); });
       dom.loginPersona.addEventListener('keydown', (e) => { if (e.key === 'Enter') login(); });
+      dom.loginInventory.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) login(); });
       dom.rememberPassword.addEventListener('change', () => {
         state.rememberPassword = dom.rememberPassword.checked;
         saveLocalCredentials();
@@ -2694,14 +2678,14 @@
       dom.quickUploadSessionBtn.addEventListener('click', openSessionUploadModal);
       dom.browseSessionFileBtn.addEventListener('click', () => dom.sessionFileInput.click());
       dom.sessionFileInput.addEventListener('change', () => {
-        const files = dom.sessionFileInput.files || [];
-        state.selectedSessionFile = Array.from(files);
+        const files = Array.from(dom.sessionFileInput.files || []).filter(Boolean);
+        state.selectedSessionFiles = files;
         updateSessionFileLabel(files);
         dom.sessionUploadError.textContent = '';
       });
-      dom.loadSelectedSessionBtn.addEventListener('click', loadSelectedSessionFile);
+      dom.loadSelectedSessionBtn.addEventListener('click', loadSelectedSessionFiles);
       dom.sessionFileInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') loadSelectedSessionFile();
+        if (e.key === 'Enter') loadSelectedSessionFiles();
       });
 
       dom.openUploadBtn.addEventListener('click', openMediaModal);
@@ -2736,7 +2720,7 @@
       dom.sendMusicUploadBtn.addEventListener('click', () => uploadImage('music'));
 
       dom.closeSessionUploadModal.addEventListener('click', () => closeOverlay(dom.sessionUploadModalOverlay));
-      dom.loadSelectedSessionBtn.addEventListener('click', loadSelectedSessionFile);
+      dom.loadSelectedSessionBtn.addEventListener('click', loadSelectedSessionFiles);
       dom.sessionUploadModalOverlay.addEventListener('click', (e) => { if (e.target === dom.sessionUploadModalOverlay) closeOverlay(dom.sessionUploadModalOverlay); });
 
       dom.closeAiNamePrompt.addEventListener('click', () => {
