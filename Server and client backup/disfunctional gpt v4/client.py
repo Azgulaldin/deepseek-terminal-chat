@@ -70,15 +70,128 @@ def derive_http_base(ws_url: str) -> str:
 SERVER_HTTP_BASE = derive_http_base(SERVER_URL)
 
 
+def normalize_inventory(value: Any) -> list[str]:
+    items: list[str] = []
+    if value is None:
+        return items
+    if isinstance(value, list):
+        raw_parts = value
+    elif isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return items
+        if "\n" in text:
+            raw_parts = text.splitlines()
+        else:
+            raw_parts = re.split(r"[;,]", text)
+    else:
+        raw_parts = [str(value)]
+    for part in raw_parts:
+        item = str(part).strip()
+        if not item:
+            continue
+        item = re.sub(r"^[\-\*•\d\.\)\(\s]+", "", item).strip()
+        if item and item not in items:
+            items.append(item)
+    return items
+
+
+def inventory_to_text(inventory: Any) -> str:
+    items = normalize_inventory(inventory)
+    return "\n".join(items) if items else "[none]"
+
+
+def parse_session_log_text(text: str, ai_name: str, username: str) -> list[dict]:
+    """Parse a session transcript and preserve multi-paragraph entries."""
+    history: list[dict] = []
+    ai_sender = str(ai_name or "").strip().lower()
+    current_header: str = ""
+    current_lines: list[str] = []
+    current_reasoning = False
+
+    def flush_entry() -> None:
+        nonlocal current_header, current_lines, current_reasoning
+        if not current_header:
+            current_lines = []
+            current_reasoning = False
+            return
+        if current_reasoning:
+            current_header = ""
+            current_lines = []
+            current_reasoning = False
+            return
+
+        header = current_header.strip()
+        if not header or header.lower().startswith("system:"):
+            current_header = ""
+            current_lines = []
+            return
+        if ": " not in header:
+            current_header = ""
+            current_lines = []
+            return
+
+        sender, first_line = header.split(": ", 1)
+        sender = sender.strip()
+        message_lines = [first_line] if first_line else []
+        message_lines.extend(current_lines)
+        message = "\n".join(message_lines).rstrip()
+        if not message:
+            current_header = ""
+            current_lines = []
+            return
+
+        sender_lower = sender.lower()
+        role = "assistant" if ai_sender and sender_lower == ai_sender else "user"
+        if sender_lower == "you":
+            sender = username or sender
+            role = "user"
+        history.append({"role": role, "sender": sender, "content": message})
+        current_header = ""
+        current_lines = []
+
+    for raw_line in text.splitlines():
+        line = raw_line.rstrip("\n")
+
+        if line.startswith("Session started:") or line.startswith("Username:") or line.startswith("Persona:") or line.startswith("Inventory:"):
+            continue
+
+        timestamp_match = re.match(r"^\[(\d{2}:\d{2}:\d{2})\]\s*(.*)$", line)
+        if timestamp_match:
+            flush_entry()
+            content = timestamp_match.group(2)
+            if content.startswith("[") and content.endswith("]") and " REASONING]" in content:
+                current_header = content
+                current_reasoning = True
+                current_lines = []
+                continue
+            current_header = content
+            current_lines = []
+            current_reasoning = False
+            continue
+
+        if current_reasoning:
+            continue
+
+        if not current_header:
+            continue
+
+        current_lines.append(line)
+
+    flush_entry()
+    return history
+
+
 # ---------------------------------------------------------------------------
 # Local session logging
 # ---------------------------------------------------------------------------
 class SessionLogger:
     """Writes a flat transcript into sessions/ with a date-based filename."""
 
-    def __init__(self, username: str, persona: str) -> None:
+    def __init__(self, username: str, persona: str, inventory: Optional[list[str]] = None) -> None:
         self.username = username
         self.persona = persona
+        self.inventory = normalize_inventory(inventory or [])
         self.file_path: Optional[Path] = None
 
     def start(self) -> Path:
@@ -94,7 +207,8 @@ class SessionLogger:
         with self.file_path.open("w", encoding="utf-8") as f:
             f.write(f"Session started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write(f"Username: {self.username}\n")
-            f.write(f"Persona: {self.persona}\n\n")
+            f.write(f"Persona: {self.persona}\n")
+            f.write(f"Inventory: {inventory_to_text(self.inventory)}\n\n")
         return self.file_path
 
     def write(self, entry: str) -> None:
@@ -121,14 +235,20 @@ class SessionLogger:
 def load_user_config() -> dict:
     if PERSONA_FILE.exists():
         try:
-            return json.loads(PERSONA_FILE.read_text(encoding="utf-8"))
+            data = json.loads(PERSONA_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                data.setdefault("inventory", [])
+                return data
+            return {}
         except Exception:
             return {}
     return {}
 
 
 def save_user_config(config: dict) -> None:
-    PERSONA_FILE.write_text(json.dumps(config, indent=2, ensure_ascii=False), encoding="utf-8")
+    payload = dict(config)
+    payload["inventory"] = normalize_inventory(payload.get("inventory", []))
+    PERSONA_FILE.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 def list_local_session_files() -> list[dict]:
@@ -177,6 +297,7 @@ class RelayState:
     username: str = ""
     password: str = ""
     persona: str = ""
+    inventory: list[str] = field(default_factory=list)
     remember_password: bool = False
     role: str = "user"
     authenticated: bool = False
@@ -227,6 +348,7 @@ async def send_initial_state(ws: aiohttp.web.WebSocketResponse) -> None:
             "username": state.username,
             "role": state.role,
             "persona": state.persona,
+            "inventory": state.inventory,
         })
         if state.last_session_state:
             await safe_send(ws, {"type": "session_state", **state.last_session_state})
@@ -266,6 +388,7 @@ async def connect_remote(username: str, password: str, persona: str = "") -> boo
             "username": username,
             "password": password,
             "persona": persona,
+            "inventory": state.inventory,
         }))
         raw = await ws.recv()
         resp = json.loads(raw)
@@ -282,6 +405,7 @@ async def connect_remote(username: str, password: str, persona: str = "") -> boo
         state.remote_ws = ws
         state.role = resp.get("role", "user")
         state.persona = persona
+        state.inventory = normalize_inventory(resp.get("inventory", state.inventory))
         state.authenticated = True
 
         server_info = {
@@ -295,10 +419,19 @@ async def connect_remote(username: str, password: str, persona: str = "") -> boo
             "username": username,
             "role": state.role,
             "persona": state.persona,
+            "inventory": state.inventory,
+        })
+        save_user_config({
+            "username": username,
+            "persona": state.persona,
+            "inventory": state.inventory,
+            **({"password": password} if state.remember_password else {}),
         })
         if state.logger is None:
-            state.logger = SessionLogger(username, state.persona)
+            state.logger = SessionLogger(username, state.persona, state.inventory)
             state.logger.start()
+        else:
+            state.logger.inventory = list(state.inventory)
         await broadcast_local({
             "type": "system",
             "message": f"Connected to server as {username}.",
@@ -378,6 +511,32 @@ async def remote_receiver() -> None:
                 state.logger.log_reasoning(sender, reasoning)
         elif msg_type == "session_state":
             state.last_session_state = dict(data)
+            inv_map = data.get("online_user_inventories") or data.get("inventories") or {}
+            if isinstance(inv_map, dict):
+                my_inv = inv_map.get(state.username)
+                if my_inv is not None:
+                    state.inventory = normalize_inventory(my_inv)
+                    save_user_config({
+                        "username": state.username,
+                        "persona": state.persona,
+                        "inventory": state.inventory,
+                        **({"password": state.password} if state.remember_password else {}),
+                    })
+                    if state.logger:
+                        state.logger.inventory = list(state.inventory)
+        elif msg_type == "inventory_state":
+            target = str(data.get("username", "")).strip()
+            inv = normalize_inventory(data.get("inventory", []))
+            if target == state.username:
+                state.inventory = inv
+                save_user_config({
+                    "username": state.username,
+                    "persona": state.persona,
+                    "inventory": state.inventory,
+                    **({"password": state.password} if state.remember_password else {}),
+                })
+                if state.logger:
+                    state.logger.inventory = list(state.inventory)
         elif msg_type == "new_session":
             if state.logger:
                 state.logger.log_system(data.get("message", ""))
@@ -445,26 +604,7 @@ async def complete_upload_session(upload_id: str, ai_name: str) -> None:
     username = info["username"]
 
     def parse_log_file(path: Path, ai_name_value: str, username_value: str) -> list[dict]:
-        history = []
-        with path.open("r", encoding="utf-8") as f:
-            for raw_line in f:
-                line = raw_line.rstrip("\n")
-                if not line.startswith("[") or "] " not in line:
-                    continue
-                idx = line.index("] ")
-                content = line[idx + 2 :]
-                if content.startswith("SYSTEM:"):
-                    continue
-                if content.startswith("[") and content.endswith("]") and " REASONING]" in content:
-                    continue
-                if ": " not in content:
-                    continue
-                sender, message = content.split(": ", 1)
-                if sender == "You":
-                    history.append({"role": "user", "sender": username_value, "content": message})
-                elif sender.lower() == ai_name_value.lower():
-                    history.append({"role": "assistant", "sender": ai_name_value, "content": message})
-        return history
+        return parse_session_log_text(path.read_text(encoding="utf-8"), ai_name_value, username_value)
 
     try:
         history = parse_log_file(filepath, ai_name, username)
@@ -498,6 +638,7 @@ async def handle_local_message(ws: aiohttp.web.WebSocketResponse, raw: str) -> N
         username = str(data.get("username", "")).strip()
         password = str(data.get("password", ""))
         persona = str(data.get("persona", "")).strip()
+        inventory = normalize_inventory(data.get("inventory", []))
         remember_password = bool(data.get("remember_password", False))
         if not username:
             await safe_send(ws, {"type": "login_failed", "reason": "Username required"})
@@ -506,8 +647,11 @@ async def handle_local_message(ws: aiohttp.web.WebSocketResponse, raw: str) -> N
         config = load_user_config()
         if not persona:
             persona = str(config.get("persona", "")).strip()
+        if not inventory:
+            inventory = normalize_inventory(config.get("inventory", []))
         config["username"] = username
         config["persona"] = persona
+        config["inventory"] = inventory
         if remember_password:
             config["password"] = password
         else:
@@ -517,9 +661,9 @@ async def handle_local_message(ws: aiohttp.web.WebSocketResponse, raw: str) -> N
         state.username = username
         state.password = password if remember_password else password
         state.persona = persona
+        state.inventory = inventory
         state.remember_password = remember_password
-        state.logger = SessionLogger(username, persona)
-        state.logger.start()
+        state.logger = None
 
         if state.remote_ws is not None:
             await close_remote()

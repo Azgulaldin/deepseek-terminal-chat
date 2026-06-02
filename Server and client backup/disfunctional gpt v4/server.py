@@ -66,6 +66,78 @@ def safe_persona(persona: str) -> str:
     return persona[:256]
 
 
+def normalize_inventory(inventory: Any) -> List[str]:
+    """Normalize inventory data from strings, lists, or other simple values."""
+    if inventory is None:
+        return []
+
+    items: List[str] = []
+
+    def add_item(value: Any) -> None:
+        text = str(value or "").strip()
+        if not text:
+            return
+        text = re.sub(r"^[-*•\d\.\)\s]+", "", text).strip()
+        if text:
+            items.append(text)
+
+    if isinstance(inventory, list):
+        for entry in inventory:
+            if isinstance(entry, (list, tuple, set)):
+                for nested in entry:
+                    add_item(nested)
+            else:
+                add_item(entry)
+        return items[:100]
+
+    if isinstance(inventory, str):
+        raw = inventory.strip()
+        if not raw:
+            return []
+        chunks = re.split(r"[\n,;]+", raw)
+        for chunk in chunks:
+            add_item(chunk)
+        if not items and raw:
+            add_item(raw)
+        return items[:100]
+
+    add_item(inventory)
+    return items[:100]
+
+
+def inventory_to_text(items: Any) -> str:
+    normalized = normalize_inventory(items)
+    if not normalized:
+        return "[empty]"
+    return "\n".join(f"- {item}" for item in normalized)
+
+
+def clone_inventory_map(source: Dict[str, Any]) -> Dict[str, List[str]]:
+    return {str(username): normalize_inventory(items) for username, items in (source or {}).items()}
+
+
+INVENTORY_UPDATE_RE = re.compile(r"<inventory_update>\s*(\{.*?\})\s*</inventory_update>", re.IGNORECASE | re.DOTALL)
+
+
+def extract_inventory_updates(reply: str) -> tuple[str, List[Dict[str, Any]]]:
+    """Pull inventory update JSON blocks out of an AI reply."""
+    updates: List[Dict[str, Any]] = []
+
+    def replacer(match: re.Match) -> str:
+        raw = match.group(1).strip()
+        try:
+            payload = json.loads(raw)
+            if isinstance(payload, dict):
+                updates.append(payload)
+        except Exception:
+            pass
+        return ""
+
+    cleaned = INVENTORY_UPDATE_RE.sub(replacer, reply or "")
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+    return cleaned, updates
+
+
 def safe_session_parts(session_id: str) -> List[str]:
     parts = [p for p in session_id.split("/") if p]
     if len(parts) != 4 or not all(p.isdigit() for p in parts):
@@ -106,6 +178,7 @@ class AppState:
             "admin_username": None,
         }
         self.history: List[Dict[str, Any]] = []
+        self.user_inventories: Dict[str, List[str]] = {}
         self.ai_awake: bool = True
         self.current_session_id: Optional[str] = None
         self.session_archive_cache: Dict[str, Dict[str, Any]] = {}
@@ -199,6 +272,7 @@ class AppState:
         payload = {
             "session_id": self.current_session_id,
             "history": [dict(item) for item in self.history],
+            "inventories": clone_inventory_map(self.user_inventories),
             "ai_config": dict(self.ai_config),
             "saved_at": datetime.utcnow().isoformat(),
         }
@@ -318,6 +392,7 @@ class AppState:
         payload = self.load_session_from_disk(session_id)
         self._archive_current_session()
         self.history = [dict(item) for item in payload.get("history", [])]
+        self.user_inventories = clone_inventory_map(payload.get("inventories", {}))
         loaded_cfg = payload.get("ai_config", {})
         if isinstance(loaded_cfg, dict):
             self.ai_config.update(loaded_cfg)
@@ -340,6 +415,7 @@ class AppState:
         data = {
             "session_id": self.current_session_id,
             "history": self.history,
+            "inventories": clone_inventory_map(self.user_inventories),
             "ai_config": self.ai_config,
             "exported_at": datetime.utcnow().isoformat(),
         }
@@ -356,6 +432,7 @@ class AppState:
         data = json.loads(path.read_text(encoding="utf-8"))
         self._archive_current_session()
         self.history = [dict(item) for item in data.get("history", [])]
+        self.user_inventories = clone_inventory_map(data.get("inventories", {}))
         loaded_cfg = data.get("ai_config", {})
         if isinstance(loaded_cfg, dict):
             self.ai_config.update(loaded_cfg)
@@ -389,6 +466,7 @@ class AppState:
                 "username": info.get("username", ""),
                 "role": info.get("role", "user"),
                 "persona": info.get("persona", ""),
+                "inventory": normalize_inventory(info.get("inventory", self.user_inventories.get(info.get("username", ""), []))),
             })
         participants.sort(key=lambda item: item["username"].lower())
         return participants
@@ -403,25 +481,30 @@ class AppState:
             username = person.get("username") or "UNKNOWN"
             role = person.get("role") or "user"
             persona = person.get("persona") or ""
+            inventory = normalize_inventory(person.get("inventory", []))
             if persona:
                 lines.append(f"- {username} ({role}) — Persona: {persona}")
             else:
                 lines.append(f"- {username} ({role}) — Persona: [not provided]")
+            lines.append(f"  Inventory: {inventory_to_text(inventory)}")
         return "\n".join(lines)
 
     def build_session_state(self) -> Dict[str, Any]:
         participants = self.get_online_participants()
         return {
             "history": self.history,
+            "inventories": clone_inventory_map(self.user_inventories),
             "ai_config": self.ai_config,
             "admin_username": self.admin_username,
             "background_url": self.background_url,
             "music_state": self.music_state,
             "profile_pics": self.profile_pics,
             "gallery": self.gallery,
+            "inventories": clone_inventory_map(self.user_inventories),
             "online_users": {info["username"]: info["role"] for info in participants},
             "online_user_details": participants,
             "online_user_personas": {info["username"]: info.get("persona", "") for info in participants},
+            "online_user_inventories": {info["username"]: normalize_inventory(info.get("inventory", self.user_inventories.get(info["username"], []))) for info in participants},
             "participant_count": len(participants),
             "current_session_id": self.current_session_id,
         }
@@ -495,11 +578,17 @@ async def maybe_generate_ai_reply(username: str, message: str) -> None:
             show_reason = state.ai_config["show_reasoning"]
             recent = state.history[-20:]
             participant_context = state.build_participant_context()
+            inventory_guidance = (
+                "Inventory guidance: every participant may have an inventory. Keep it consistent. "
+                "When inventory changes happen, include a block exactly like <inventory_update>{\"target\":\"username\",\"add\":[\"item\"],\"remove\":[\"item\"],\"set\":[\"item\"]}</inventory_update>. "
+                "Use target, username, or user to identify the affected player. The server removes these blocks before broadcasting the reply."
+            )
             system_msg = (
                 f"You are {ai_name}. {behavior}\n\n"
                 f"{participant_context}\n\n"
                 "Use the participant information above when addressing users, tracking who is present, "
-                "and respecting each user's persona when relevant."
+                "respecting each user's persona when relevant, and maintaining inventory continuity.\n\n"
+                f"{inventory_guidance}"
             )
             messages = [{"role": "system", "content": system_msg}]
             for h in recent:
@@ -523,13 +612,46 @@ async def maybe_generate_ai_reply(username: str, message: str) -> None:
         choice = response.choices[0].message
         reply = choice.content or ""
         reasoning = getattr(choice, "reasoning_content", None)
+        reply, inventory_updates = extract_inventory_updates(reply)
     except Exception as e:
         reply = f"ERROR: {e}"
         reasoning = None
+        inventory_updates = []
 
+    applied_inventory_updates = []
     async with state_lock:
         ai_name = state.ai_config["name"]
         state.append_assistant_message(ai_name, reply)
+        applied_inventory_updates = []
+        for update in inventory_updates:
+            target = str(update.get("target") or update.get("username") or update.get("user") or "").strip()
+            if not target:
+                continue
+
+            current = list(state.user_inventories.get(target, []))
+
+            if "set" in update and update.get("set") is not None:
+                current = normalize_inventory(update.get("set"))
+            else:
+                for item in normalize_inventory(update.get("remove", [])):
+                    lowered = item.lower()
+                    for idx, existing in enumerate(list(current)):
+                        if existing.lower() == lowered:
+                            current.pop(idx)
+                            break
+                for item in normalize_inventory(update.get("add", [])):
+                    if item not in current:
+                        current.append(item)
+
+            state.user_inventories[target] = current
+            for ws_info in state.clients.values():
+                if ws_info.get("username") == target:
+                    ws_info["inventory"] = list(current)
+                    break
+            applied_inventory_updates.append({"target": target, "inventory": list(current)})
+
+    if applied_inventory_updates:
+        await broadcast_session_state("Inventory updated.")
 
     if reasoning and state.ai_config.get("show_reasoning"):
         await broadcast({"type": "reasoning", "sender": state.ai_config["name"], "message": reasoning})
@@ -688,6 +810,7 @@ async def chat_endpoint(ws: WebSocket):
     username = str(join_data.get("username", "")).strip()
     password = str(join_data.get("password", "")).strip()
     persona = safe_persona(join_data.get("persona", ""))
+    inventory = normalize_inventory(join_data.get("inventory", []))
     if not username:
         await ws.send_text(json.dumps({"type": "join_response", "accepted": False, "reason": "Username required"}))
         await ws.close()
@@ -709,7 +832,15 @@ async def chat_endpoint(ws: WebSocket):
             is_admin = True
 
         role = "admin" if is_admin else "user"
-        state.clients[ws] = {"username": username, "role": role, "persona": persona}
+        existing_inventory = list(state.user_inventories.get(username, []))
+        if inventory:
+            merged_inventory = inventory
+        elif existing_inventory:
+            merged_inventory = existing_inventory
+        else:
+            merged_inventory = []
+        state.user_inventories[username] = list(merged_inventory)
+        state.clients[ws] = {"username": username, "role": role, "persona": persona, "inventory": list(merged_inventory)}
         state.ensure_active_session()
         setup_needed = not state.ai_config.get("configured", False) and is_admin and not state._setup_in_progress
         if setup_needed:
@@ -722,6 +853,7 @@ async def chat_endpoint(ws: WebSocket):
         "role": role,
         "username": username,
         "persona": persona,
+        "inventory": inventory,
     }))
 
     if setup_needed:
@@ -730,7 +862,7 @@ async def chat_endpoint(ws: WebSocket):
     await ws.send_text(json.dumps({"type": "system", "message": f"Connected as {role}."}))
     await ws.send_text(json.dumps({"type": "session_state", **state.build_session_state()}))
 
-    await broadcast({"type": "user_joined", "username": username, "role": role, "persona": persona}, exclude=ws)
+    await broadcast({"type": "user_joined", "username": username, "role": role, "persona": persona, "inventory": inventory}, exclude=ws)
     print(f"{username} connected as {role}.")
 
     try:
@@ -963,6 +1095,41 @@ async def handle_command(ws: WebSocket, username: str, msg: str) -> bool:
 
         plural = "entry" if removed == 1 else "entries"
         await broadcast({"type": "system", "message": f"Removed {removed} {plural}."})
+        await broadcast_session_state()
+        return True
+
+
+    if lower.startswith("/inventory"):
+        if not is_admin:
+            await send_system(ws, "Only admin can edit inventories")
+            return True
+
+        arg = cmd[len("/inventory"):].strip()
+        if not arg:
+            async with state_lock:
+                lines = ["Inventories:"]
+                for username_key in sorted(state.user_inventories.keys(), key=str.lower):
+                    lines.append(f"- {username_key}: {inventory_to_text(state.user_inventories.get(username_key, []))}")
+            await send_system(ws, "\n".join(lines) if len(lines) > 1 else "No inventories stored.")
+            return True
+
+        if "=" not in arg:
+            await send_system(ws, "Usage: /inventory <username> = item 1, item 2")
+            return True
+
+        target, raw_inventory = [part.strip() for part in arg.split("=", 1)]
+        if not target:
+            await send_system(ws, "Usage: /inventory <username> = item 1, item 2")
+            return True
+
+        new_inventory = normalize_inventory(raw_inventory)
+        async with state_lock:
+            state.user_inventories[target] = new_inventory
+            for info_ws, info in state.clients.items():
+                if info.get("username") == target:
+                    info["inventory"] = list(new_inventory)
+                    break
+        await broadcast({"type": "system", "message": f"Inventory updated for {target}."})
         await broadcast_session_state()
         return True
 
